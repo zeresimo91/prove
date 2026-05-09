@@ -38,18 +38,11 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [sale, setSale] = useState([]);
-  
-  // STATO UNICO PER I TAVOLI - Risolto il bug del doppio render
   const [tuttiITavoli, setTuttiITavoli] = useState([]);
-  
   const [prenotazioni, setPrenotazioni] = useState([]);
   const [dataVista, setDataVista] = useState(formatData(new Date().toISOString()));
   const [servizioVista, setServizioVista] = useState(new Date().getHours() < 16 ? 'pranzo' : 'cena');
   
-  const [dimensioneTestoTavolo] = useState(18); 
-  const [dimensioneTestoCliente] = useState(12);
-  const [zoomMappa, setZoomMappa] = useState(0.4); 
-
   const [nomeCliente, setNomeCliente] = useState('');
   const [numeroPersone, setNumeroPersone] = useState('');
   const [oraEsatta, setOraEsatta] = useState('');
@@ -70,9 +63,13 @@ export default function App() {
   const [showCestino, setShowCestino] = useState(false);
 
   const fileInputRef = useRef(null);
+  const mapContainerRef = useRef(null);
+  const [mapScale, setMapScale] = useState(1);
+  const VIRTUAL_WIDTH = 1200; 
+  const VIRTUAL_HEIGHT = 800; 
+  
   const isAdmin = userRole === 'admin';
 
-  // Impedisce al realtime di aggiornare la mappa e spezzare il DOM durante l'edit
   const isEditModeRef = useRef(isEditMode);
   useEffect(() => {
     isEditModeRef.current = isEditMode;
@@ -81,11 +78,24 @@ export default function App() {
   const prenotazioniAttive = prenotazioni.filter(p => !p.eliminata);
   const prenotazioniEliminate = prenotazioni.filter(p => p.eliminata).sort((a,b) => new Date(b.data_eliminazione) - new Date(a.data_eliminazione));
 
+  const updateMapScale = () => {
+    if (mapContainerRef.current) {
+      const { clientWidth, clientHeight } = mapContainerRef.current;
+      const scaleX = clientWidth / VIRTUAL_WIDTH;
+      const scaleY = clientHeight / VIRTUAL_HEIGHT;
+      setMapScale(Math.min(scaleX, scaleY, 1.5)); 
+    }
+  };
+
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 992);
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 992);
+      updateMapScale();
+    };
     window.addEventListener('resize', handleResize);
+    updateMapScale();
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [isLoggedIn, isFullscreen]);
 
   useEffect(() => {
     const savedLogin = localStorage.getItem('belvedere_logged_in');
@@ -95,9 +105,6 @@ export default function App() {
       setUserRole(savedRole);
     }
   }, []);
-
-  const zoomIn = () => setZoomMappa(prev => Math.min(prev + 0.1, 1.8));
-  const zoomOut = () => setZoomMappa(prev => Math.max(prev - 0.1, 0.15));
 
   // REALTIME
   useEffect(() => {
@@ -200,7 +207,7 @@ export default function App() {
   }
   async function caricaTuttiITavoli() {
     let { data } = await supabase.from('tavoli').select('*');
-    if (data) setTuttiITavoli(data);
+    if (data) { setTuttiITavoli(data); setTimeout(updateMapScale, 100); }
   }
 
   async function salvaPrenotazione(e) {
@@ -282,13 +289,13 @@ export default function App() {
   }
 
   async function aggiungiMuro() {
-    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_300x20', capacita: 0, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
+    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_150x20', capacita: 0, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
     await caricaTuttiITavoli(); 
     esportaBackup(); 
   }
 
   async function salvaCorrente() {
-    const promises = tuttiITavoli.map(t => supabase.from('tavoli').update({ pos_x: Number(t.pos_x) || 0, pos_y: Number(t.pos_y) || 0 }).eq('id', t.id));
+    const promises = tuttiITavoli.map(t => supabase.from('tavoli').update({ pos_x: t.pos_x, pos_y: t.pos_y }).eq('id', t.id));
     await Promise.all(promises);
     setIsEditMode(false);
     await caricaTuttiITavoli();
@@ -310,7 +317,7 @@ export default function App() {
 
   async function impostaStandard() {
     if (!window.confirm("Impostare la situazione attuale come STANDARD?")) return;
-    const promises = tuttiITavoli.map(t => supabase.from('tavoli').update({ std_x: Number(t.pos_x) || 0, std_y: Number(t.pos_y) || 0 }).eq('id', t.id));
+    const promises = tuttiITavoli.map(t => supabase.from('tavoli').update({ std_x: t.pos_x, std_y: t.pos_y }).eq('id', t.id));
     await Promise.all(promises);
     alert("⭐ Standard salvato!");
     aggiornaTutto();
@@ -321,7 +328,7 @@ export default function App() {
     const promises = tuttiITavoli.map(t => {
        const targetX = t.std_x !== null ? t.std_x : t.pos_x;
        const targetY = t.std_y !== null ? t.std_y : t.pos_y;
-       return supabase.from('tavoli').update({ pos_x: Number(targetX) || 0, pos_y: Number(targetY) || 0 }).eq('id', t.id);
+       return supabase.from('tavoli').update({ pos_x: targetX, pos_y: targetY }).eq('id', t.id);
     });
     await Promise.all(promises);
     alert("🔄 Mappa ripristinata!");
@@ -422,7 +429,7 @@ export default function App() {
     else setTavoloInfo(id);
   };
 
-  // AGGIORNAMENTO POSIZIONE PULITO: Modifica solo lo stato tuttiITavoli
+  // AGGIORNAMENTO POSIZIONE. Cambia lo stato garantendo l'aggiornamento reattivo.
   const aggiornaPosizioneLocale = (id, x, y) => { 
       setTuttiITavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); 
   };
@@ -538,12 +545,6 @@ export default function App() {
             <button onClick={() => setIsEditMode(!isEditMode)} style={{ padding: '8px 12px', borderRadius: '12px', border: 'none', background: isEditMode ? '#28a745' : '#dc3545', color: 'white', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>{isEditMode ? "🔓 Modifica ON" : "🔒 Modifica Mappa"}</button>
           )}
         </div>
-        
-        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', background: '#f8f9fa', padding: '5px 15px', borderRadius: '20px', border: '1px solid #ddd' }}>
-            <span style={{ fontSize: '13px', color: '#666', fontWeight: 'bold' }}>ZOOM:</span>
-            <button onClick={zoomOut} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: '35px', height: '35px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>-</button>
-            <button onClick={zoomIn} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: '35px', height: '35px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>+</button>
-        </div>
       </div>
 
       {isAdmin && isEditMode && (
@@ -559,11 +560,12 @@ export default function App() {
         </div>
       )}
 
-      {/* MAPPA PULITA E NATIVA: NESSUN CONFLITTO CON IL MOUSE */}
+      {/* MAPPA PULITA E NATIVA */}
       <div 
-        style={{ flex: 1, minHeight: isMobile ? '55vh' : '65vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative' }}
+        ref={mapContainerRef}
+        style={{ flex: 1, minHeight: isMobile ? '55vh' : '65vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'hidden', position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
       >
-        <div style={{ width: '4000px', height: '4000px', position: 'relative', transform: `scale(${parseFloat(zoomMappa)})`, transformOrigin: 'top left' }}>
+        <div style={{ width: `${VIRTUAL_WIDTH}px`, height: `${VIRTUAL_HEIGHT}px`, position: 'relative', transform: `scale(${mapScale})`, transformOrigin: 'center center' }}>
           
           {!isEditMode && mergedReservations.map(p => {
              const assignedTables = tuttiITavoli.filter(t => p.tavoli_assegnati.includes(t.id) && !String(t.numero_tavolo).startsWith('MURO'));
@@ -591,7 +593,7 @@ export default function App() {
              )
           })}
 
-          {(tuttiITavoli || []).map(t => {
+          {tuttiITavoli.map(t => {
             const isMuro = String(t.numero_tavolo).startsWith('MURO');
             const isMergedHidden = !isEditMode && mergedTableIds.has(t.id) && !isMuro;
 
@@ -602,14 +604,13 @@ export default function App() {
                const match = String(t.numero_tavolo).match(/MURO_(\d+)x(\d+)/i);
                if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
                
-               // KEY FISSA (t.id), POSITION CONTROLLATA (t.pos_x), ONSTOP AGGIORNA STATO
+               // KEY FISSA (t.id), POSITION CONTROLLATA, ONSTOP AGGIORNA STATO
                return (
                  <Draggable 
                     key={t.id} 
                     disabled={!isEditMode} 
-                    scale={parseFloat(zoomMappa)} 
+                    scale={mapScale} 
                     position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} 
-                    onDrag={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}
                     onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}
                  >
                    <div style={{ position: 'absolute', width: `${w}px`, height: `${h}px`, backgroundColor: '#495057', borderRadius: '6px', cursor: isEditMode ? 'move' : 'default', zIndex: 1, border: '1px solid #343a40' }}>
@@ -632,14 +633,13 @@ export default function App() {
             else if (pres.some(p => p.presente)) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
             else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
 
-            // KEY FISSA (t.id), POSITION CONTROLLATA (t.pos_x), ONSTOP AGGIORNA STATO
+            // KEY FISSA (t.id), POSITION CONTROLLATA, ONSTOP AGGIORNA STATO, EVENTI ISOLATI
             return (
               <Draggable 
                  key={t.id} 
                  disabled={!isEditMode} 
-                 scale={parseFloat(zoomMappa)} 
+                 scale={mapScale} 
                  position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} 
-                 onDrag={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}
                  onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}
               >
                 <div onClick={(e) => { e.stopPropagation(); if (!isEditMode) clickTavoloSfondo(t.id); }}
@@ -761,6 +761,7 @@ export default function App() {
              {isAdmin && <button onClick={() => setShowCestino(true)} style={{ background: '#343a40', color: 'white', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>🗑️ Cestino</button>}
              <button onClick={() => setShowDisponibilita(true)} style={{ background: '#17a2b8', color: 'white', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', boxShadow: '0 2px 5px rgba(23,162,184,0.3)', cursor: 'pointer' }}>📊 Disponibilità</button>
              <button onClick={ascoltaComando} style={{ background: isListening ? '#dc3545' : '#6f42c1', color: 'white', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', boxShadow: isListening ? '0 0 10px #dc3545' : 'none', cursor: 'pointer' }}>{isListening ? '🎙️ Ascolta...' : '🎤 Voce'}</button>
+             {isAdmin && <button onClick={scaricaAgendaFile} style={{ background: '#e7f1ff', color: '#0d6efd', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>📥 AGENDA</button>}
              <button onClick={() => { setIsLoggedIn(false); localStorage.removeItem('belvedere_logged_in'); localStorage.removeItem('belvedere_user_role'); }} style={{ background: '#f8f9fa', color: '#dc3545', padding: '8px 12px', borderRadius: '10px', border: '1px solid #ddd', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>Esci</button>
           </div>
         </div>
