@@ -33,16 +33,14 @@ export default function App() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 992);
 
   const [sale, setSale] = useState([]);
-  const [salaAttiva, setSalaAttiva] = useState(null);
-  const [tavoli, setTavoli] = useState([]);
   const [tuttiITavoli, setTuttiITavoli] = useState([]);
   const [prenotazioni, setPrenotazioni] = useState([]);
   const [dataVista, setDataVista] = useState(formatData(new Date().toISOString()));
   const [servizioVista, setServizioVista] = useState(new Date().getHours() < 16 ? 'pranzo' : 'cena');
   
-  const [dimensioneTestoTavolo, setDimensioneTestoTavolo] = useState(20);
-  const [dimensioneTestoCliente, setDimensioneTestoCliente] = useState(13);
-  const [zoomMappa, setZoomMappa] = useState(0.2); 
+  const [dimensioneTestoTavolo] = useState(20);
+  const [dimensioneTestoCliente] = useState(13);
+  const [zoomMappa, setZoomMappa] = useState(0.3); 
 
   const [nomeCliente, setNomeCliente] = useState('');
   const [numeroPersone, setNumeroPersone] = useState('');
@@ -89,28 +87,17 @@ export default function App() {
     document.getElementsByTagName('head')[0].appendChild(meta);
   }, []);
 
-  // CONNESSIONE REALTIME SUPABASE (I camerieri e l'admin si vedono in tempo reale)
+  // REALTIME
   useEffect(() => {
     if (isLoggedIn) {
       const channel = supabase
         .channel('schema-db-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'prenotazioni' }, () => {
-          caricaPrenotazioni();
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tavoli' }, () => {
-          caricaTuttiITavoli();
-        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'prenotazioni' }, () => { caricaPrenotazioni(); })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tavoli' }, () => { caricaTuttiITavoli(); })
         .subscribe();
       return () => { supabase.removeChannel(channel); };
     }
   }, [isLoggedIn]);
-
-  useEffect(() => {
-    if (salaAttiva && sale.length > 0) {
-      const s = sale.find(item => String(item.id) === String(salaAttiva));
-      setZoomMappa(s?.zoom_std && Number(s.zoom_std) > 0 ? Number(s.zoom_std) : 0.2);
-    }
-  }, [salaAttiva, sale]);
 
   const getPrenotazioniTurno = (tavoloId) => {
     return (prenotazioni || []).filter(p => 
@@ -173,16 +160,12 @@ export default function App() {
       try {
         const backupData = JSON.parse(event.target.result);
         if (!backupData.tavoli || !backupData.prenotazioni) throw new Error("File non valido");
-        if (!window.confirm("⚠️ ATTENZIONE: Questo ripristinerà TAVOLI e PRENOTAZIONI esattamente come nel backup. Procedo?")) {
-           e.target.value = ""; return;
-        }
+        if (!window.confirm("⚠️ ATTENZIONE: Questo ripristinerà TAVOLI e PRENOTAZIONI. Procedo?")) { e.target.value = ""; return; }
         if (backupData.tavoli.length > 0) await supabase.from('tavoli').upsert(backupData.tavoli);
         if (backupData.prenotazioni.length > 0) await supabase.from('prenotazioni').upsert(backupData.prenotazioni);
         alert("✅ Ripristino Totale completato!");
         aggiornaTutto();
-      } catch (err) {
-        alert("Errore nel ripristino. File non valido o corrotto.");
-      }
+      } catch (err) { alert("Errore nel ripristino. File non valido."); }
       e.target.value = ""; 
     };
     reader.readAsText(file);
@@ -193,7 +176,7 @@ export default function App() {
 
   async function caricaSale() {
     let { data } = await supabase.from('sale').select('*').order('ordine');
-    if (data?.length > 0) { setSale(data); if (!salaAttiva) setSalaAttiva(data[0].id); }
+    if (data?.length > 0) { setSale(data); }
   }
   async function caricaPrenotazioni() {
     let { data } = await supabase.from('prenotazioni').select('*').order('data_ora', { ascending: false });
@@ -203,11 +186,6 @@ export default function App() {
     let { data } = await supabase.from('tavoli').select('*');
     if (data) setTuttiITavoli(data);
   }
-  useEffect(() => { 
-    if (salaAttiva && isLoggedIn && tuttiITavoli.length > 0) {
-      setTavoli(tuttiITavoli.filter(t => String(t.sala_id) === String(salaAttiva)));
-    }
-  }, [salaAttiva, tuttiITavoli, isLoggedIn]);
 
   async function salvaPrenotazione(e) {
     if (e) e.preventDefault();
@@ -232,41 +210,20 @@ export default function App() {
     const now = new Date();
     let hh = String(now.getHours()).padStart(2, '0');
     let mm = String(now.getMinutes()).padStart(2, '0');
-
     if (servizioVista === 'pranzo' && now.getHours() >= 16) { hh = '13'; mm = '00'; }
     if (servizioVista === 'cena' && now.getHours() < 16) { hh = '20'; mm = '00'; }
 
-    const payload = {
-      nome_cliente: 'Senza Prenotazione',
-      numero_persone: parseInt(pax),
-      data_ora: new Date(`${dataVista}T${hh}:${mm}`).toISOString(),
-      tavoli_assegnati: [tavoloId],
-      note: '',
-      presente: true 
-    };
-
+    const payload = { nome_cliente: 'Senza Prenotazione', numero_persone: parseInt(pax), data_ora: new Date(`${dataVista}T${hh}:${mm}`).toISOString(), tavoli_assegnati: [tavoloId], note: '', presente: true };
     const { error } = await supabase.from('prenotazioni').insert([payload]);
-    if (!error) {
-      aggiornaTutto();
-      setTavoloInfo(null);
-    } else {
-      alert("Errore nell'occupare il tavolo!");
-    }
+    if (!error) { aggiornaTutto(); setTavoloInfo(null); } else { alert("Errore nell'occupare il tavolo!"); }
   }
 
   async function spostaTavoloRapido(prenoId, nuovoTavoloId) {
     if (!nuovoTavoloId) return;
     const targetTable = tuttiITavoli.find(t => String(t.id) === String(nuovoTavoloId));
     if (!targetTable) return alert("Errore: Tavolo non trovato!");
-
     const { error } = await supabase.from('prenotazioni').update({ tavoli_assegnati: [targetTable.id] }).eq('id', prenoId);
-    if (!error) {
-      setPrenoInSpostamento(null);
-      setTavoloInfo(null);
-      aggiornaTutto();
-    } else {
-      alert("Errore nello spostamento.");
-    }
+    if (!error) { setPrenoInSpostamento(null); setTavoloInfo(null); aggiornaTutto(); }
   }
 
   async function togglePresenza(id, statoAttuale) {
@@ -275,32 +232,30 @@ export default function App() {
   }
 
   async function aggiungiTavolo() {
-    await supabase.from('tavoli').insert([{ sala_id: salaAttiva, numero_tavolo: '?', capacita: 2, pos_x: 100, pos_y: 100, std_x: 100, std_y: 100 }]);
+    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: '?', capacita: 2, pos_x: 1500, pos_y: 1500, std_x: 1500, std_y: 1500 }]);
     await caricaTuttiITavoli(); 
     esportaBackup(); 
   }
 
-  async function eliminaTavolo(id) {
-    if (window.confirm("Eliminare definitivamente il tavolo?")) { await supabase.from('tavoli').delete().eq('id', id); aggiornaTutto(); }
+  // NUOVA FUNZIONE: AGGIUNGI MURO
+  async function aggiungiMuro() {
+    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_300x20', capacita: 0, pos_x: 1500, pos_y: 1500, std_x: 1500, std_y: 1500 }]);
+    await caricaTuttiITavoli(); 
+    esportaBackup(); 
   }
 
   async function salvaCorrente() {
-    const promises = tavoli.map(t => supabase.from('tavoli').update({ pos_x: Number(t.pos_x) || 0, pos_y: Number(t.pos_y) || 0 }).eq('id', t.id));
+    const promises = tuttiITavoli.map(t => supabase.from('tavoli').update({ pos_x: Number(t.pos_x) || 0, pos_y: Number(t.pos_y) || 0 }).eq('id', t.id));
     await Promise.all(promises);
     setIsEditMode(false);
     await caricaTuttiITavoli();
     esportaBackup(); 
-    alert("📍 Posizioni salvate! Backup generato.");
-  }
-
-  async function salvaZoomReparto() {
-    const { error } = await supabase.from('sale').update({ zoom_std: zoomMappa }).eq('id', salaAttiva);
-    if (!error) alert("🔍 Zoom salvato!");
+    alert("📍 Posizioni salvate su Mappa Unica! Backup generato.");
   }
 
   async function impostaStandard() {
     if (!window.confirm("Impostare la situazione attuale come STANDARD?")) return;
-    const promises = tavoli.map(t => supabase.from('tavoli').update({ std_x: Number(t.pos_x) || 0, std_y: Number(t.pos_y) || 0 }).eq('id', t.id));
+    const promises = tuttiITavoli.map(t => supabase.from('tavoli').update({ std_x: Number(t.pos_x) || 0, std_y: Number(t.pos_y) || 0 }).eq('id', t.id));
     await Promise.all(promises);
     alert("⭐ Standard salvato!");
     aggiornaTutto();
@@ -308,13 +263,13 @@ export default function App() {
 
   async function ripristinaStandard() {
     if (!window.confirm("Tornare alla disposizione STANDARD?")) return;
-    const promises = tavoli.map(t => {
+    const promises = tuttiITavoli.map(t => {
        const targetX = t.std_x !== null ? t.std_x : t.pos_x;
        const targetY = t.std_y !== null ? t.std_y : t.pos_y;
        return supabase.from('tavoli').update({ pos_x: Number(targetX) || 0, pos_y: Number(targetY) || 0 }).eq('id', t.id);
     });
     await Promise.all(promises);
-    alert("🔄 Sala ripristinata!");
+    alert("🔄 Mappa ripristinata!");
     aggiornaTutto();
   }
 
@@ -322,16 +277,12 @@ export default function App() {
     e.preventDefault();
     const pwd = passInput.toLowerCase().trim();
     if (passInput === "belvedere59") {
-      setIsLoggedIn(true);
-      setUserRole('admin');
+      setIsLoggedIn(true); setUserRole('admin');
       if (ricordami) { localStorage.setItem('belvedere_logged_in', 'true'); localStorage.setItem('belvedere_user_role', 'admin'); }
     } else if (pwd === "seba") {
-      setIsLoggedIn(true);
-      setUserRole('cameriere');
+      setIsLoggedIn(true); setUserRole('cameriere');
       if (ricordami) { localStorage.setItem('belvedere_logged_in', 'true'); localStorage.setItem('belvedere_user_role', 'cameriere'); }
-    } else {
-      alert("Password errata!");
-    }
+    } else { alert("Password errata!"); }
   };
 
   const resetForm = () => { setEditingId(null); setNomeCliente(''); setNumeroPersone(''); setOraEsatta(''); setNote(''); setTavoliSelezionati([]); };
@@ -340,8 +291,7 @@ export default function App() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return alert("Il browser non supporta il riconoscimento vocale.");
     const recognition = new SpeechRecognition();
-    recognition.lang = 'it-IT';
-    recognition.interimResults = false;
+    recognition.lang = 'it-IT'; recognition.interimResults = false;
     recognition.onstart = () => { setIsListening(true); setTestoVocale('Ascolto...'); };
     recognition.onend = () => setIsListening(false);
     recognition.onresult = (event) => {
@@ -354,20 +304,14 @@ export default function App() {
 
   const compilaFormDaVoce = (fraseOriginale) => {
     let frase = fraseOriginale.toLowerCase().replace(/\bmezza\b/g, '30');
-    const numeriTestuali = {
-      'uno': '1', 'un': '1', 'una': '1', 'due': '2', 'tre': '3', 'quattro': '4', 'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9', 'dieci': '10', 'undici': '11', 'dodici': '12', 'tredici': '13', 'quattordici': '14', 'quindici': '15', 'sedici': '16', 'diciassette': '17', 'diciotto': '18', 'diciannove': '19', 'venti': '20'
-    };
-    Object.keys(numeriTestuali).forEach(parola => {
-       frase = frase.replace(new RegExp(`\\b${parola}\\b`, 'gi'), numeriTestuali[parola]);
-    });
+    const numeriTestuali = { 'uno': '1', 'un': '1', 'una': '1', 'due': '2', 'tre': '3', 'quattro': '4', 'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9', 'dieci': '10', 'undici': '11', 'dodici': '12', 'tredici': '13', 'quattordici': '14', 'quindici': '15', 'sedici': '16', 'diciassette': '17', 'diciotto': '18', 'diciannove': '19', 'venti': '20' };
+    Object.keys(numeriTestuali).forEach(parola => { frase = frase.replace(new RegExp(`\\b${parola}\\b`, 'gi'), numeriTestuali[parola]); });
 
     let fraseSenzaDati = frase;
-    let pax = '';
-    const matchPersone = fraseSenzaDati.match(/(\d+)\s*person/i);
+    let pax = ''; const matchPersone = fraseSenzaDati.match(/(\d+)\s*person/i);
     if (matchPersone) { pax = matchPersone[1]; fraseSenzaDati = fraseSenzaDati.replace(matchPersone[0], ''); }
 
-    let ora = '';
-    const matchOra = fraseSenzaDati.match(/(?:ore|alle|le)\s*(\d{1,2})(?:[\:\s\.]*(?:e\s*)?(\d{2}))?/i);
+    let ora = ''; const matchOra = fraseSenzaDati.match(/(?:ore|alle|le)\s*(\d{1,2})(?:[\:\s\.]*(?:e\s*)?(\d{2}))?/i);
     if (matchOra) {
       let hh = parseInt(matchOra[1], 10);
       let computedServizio = hh < 16 ? 'pranzo' : 'cena';
@@ -401,8 +345,7 @@ export default function App() {
     }
     setDataVista(dateToSet); 
 
-    let foundTableIds = [];
-    const matchTavolo = fraseSenzaDati.match(/tavolo\s*([\d\.]+)/i);
+    let foundTableIds = []; const matchTavolo = fraseSenzaDati.match(/tavolo\s*([\d\.]+)/i);
     if (matchTavolo) {
        const targetTable = tuttiITavoli.find(t => String(t.numero_tavolo) === String(matchTavolo[1]));
        if (targetTable) foundTableIds.push(targetTable.id);
@@ -412,7 +355,6 @@ export default function App() {
 
     let nomePulito = fraseSenzaDati.replace(/\baggiungi\b|\binserisci\b|\bnuova\b|\bprenota\b|\bprenotazione\b|\bal\b|\bil\b|\bper\b/gi, '').replace(/[.,]/g, '').replace(/\s+/g, ' ').trim();
     const nomeFinale = nomePulito.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1) : '').join(' ');
-
     setNomeCliente(nomeFinale || '');
     if (pax) setNumeroPersone(pax);
     if (ora && generaOrari().includes(ora)) setOraEsatta(ora); else if (ora) setOraEsatta(ora); 
@@ -445,7 +387,7 @@ export default function App() {
   const handleTouchMove = (e) => {
     if (e.touches.length === 2 && pinchDist) {
       let newZ = pinchZoom * (Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY) / pinchDist);
-      if (newZ < 0.2) newZ = 0.2; if (newZ > 1.5) newZ = 1.5;
+      if (newZ < 0.15) newZ = 0.15; if (newZ > 1.5) newZ = 1.5;
       setZoomMappa(newZ);
     }
   };
@@ -461,23 +403,36 @@ export default function App() {
     else setTavoloInfo(id);
   };
 
-  const aggiornaPosizioneLocale = (id, x, y) => { setTavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); };
+  const aggiornaPosizioneLocale = (id, x, y) => { setTavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); setTuttiITavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); };
 
   async function modificaInfoTavolo(t) {
     if (!t || !isAdmin) return;
+    if (String(t.numero_tavolo).startsWith('MURO')) {
+      const dims = window.prompt("Modifica dimensioni MURO (Larghezza x Altezza):", t.numero_tavolo.replace('MURO_', ''));
+      if (dims) { await supabase.from('tavoli').update({ numero_tavolo: `MURO_${dims}` }).eq('id', t.id); aggiornaTutto(); }
+      return;
+    }
     const n = window.prompt("Nome tavolo:", t.numero_tavolo); if (n === null) return;
     const p = window.prompt("Capacità posti:", t.capacita); if (p === null) return;
     if (n && p) { await supabase.from('tavoli').update({ numero_tavolo: n, capacita: parseInt(p) }).eq('id', t.id); aggiornaTutto(); }
   }
 
-  const tuttiITavoliOrdinati = [...(tuttiITavoli || [])].sort((a, b) => parseInt(a.numero_tavolo) - parseInt(b.numero_tavolo));
+  // Tavoli puliti dai "Muri" per le tendine e disponibilità
+  const tuttiITavoliOrdinati = [...(tuttiITavoli || [])].filter(t => !String(t.numero_tavolo).startsWith('MURO')).sort((a, b) => parseInt(a.numero_tavolo) - parseInt(b.numero_tavolo));
+
+  // TAVOLI UNITI: Logica di fusione per tavolate multiple
+  const mergedReservations = prenotazioniDelServizio.filter(p => p.tavoli_assegnati && p.tavoli_assegnati.length > 1);
+  const mergedTableIds = new Set();
+  if (!isEditMode) {
+    mergedReservations.forEach(p => p.tavoli_assegnati.forEach(id => mergedTableIds.add(id)));
+  }
 
   if (!isLoggedIn) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f4f6f8' }}>
         <form onSubmit={handleLogin} style={{ background: 'white', padding: '30px', borderRadius: '20px', width: '85%', maxWidth: '350px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }}>
-          {/* LOGO SCHERMATA LOGIN */}
-          <img src="/logo.png" alt="Belvedere" style={{ height: '70px', display: 'block', margin: '0 auto 20px auto', objectFit: 'contain' }} />
+          {/* LOGO SCHERMATA LOGIN PIU GRANDE */}
+          <img src="/logo.png" alt="Belvedere" style={{ height: '90px', display: 'block', margin: '0 auto 20px auto', objectFit: 'contain' }} />
           <p style={{ textAlign: 'center', color: '#666', marginBottom: '25px', fontSize: '14px' }}>Inserisci la password di accesso</p>
           <input type="password" placeholder="Password..." value={passInput} onChange={e => setPassInput(e.target.value)} style={{ width: '100%', padding: '15px', borderRadius: '12px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
           <div style={{ marginTop: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -504,13 +459,12 @@ export default function App() {
         
         <select value="" onChange={(e) => { 
             const val = e.target.value; 
-            const targetTable = tuttiITavoli.find(t => String(t.id) === String(val));
+            const targetTable = tuttiITavoliOrdinati.find(t => String(t.id) === String(val));
             if (targetTable && !tavoliSelezionati.includes(targetTable.id)) setTavoliSelezionati(prev => [...prev, targetTable.id]);
         }} style={{ padding: '14px', borderRadius: '12px', border: '2px solid #e7f1ff', fontSize: '16px', fontWeight: 'bold' }}>
           <option value="">➕ Assegna Tavolo Rapido...</option>
-          {/* MOSTRA TUTTI I TAVOLI CON NOME SALA */}
           {tuttiITavoliOrdinati.map(t => {
-             const roomName = (sale.find(s => s.id === t.sala_id) || {}).nome || '';
+             const roomName = (sale.find(s => s.id === t.sala_id) || {}).nome || 'Generale';
              const isFree = getPrenotazioniTurno(t.id).length === 0;
              return <option key={t.id} value={t.id}>Tav. {t.numero_tavolo} ({roomName}) - {isFree ? "🟢 Libero" : "🟠 Occupato"}</option>
           })}
@@ -534,11 +488,10 @@ export default function App() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '12px 18px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', gap: '15px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1 }}>
           {isAdmin && (
-            <button onClick={() => setIsEditMode(!isEditMode)} style={{ padding: '10px 15px', borderRadius: '12px', border: 'none', background: isEditMode ? '#28a745' : '#dc3545', color: 'white', fontSize: '18px', cursor: 'pointer' }}>{isEditMode ? "🔓" : "🔒"}</button>
+            <button onClick={() => setIsEditMode(!isEditMode)} style={{ padding: '10px 15px', borderRadius: '12px', border: 'none', background: isEditMode ? '#28a745' : '#dc3545', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>{isEditMode ? "🔓 Modifica ON" : "🔒 Sblocca Mappa"}</button>
           )}
-          <select value={salaAttiva || ''} onChange={e => setSalaAttiva(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '12px', border: '1px solid #ced4da', fontSize: '16px', fontWeight: 'bold' }}>
-            {(sale || []).map(s => <option key={s.id} value={s.id}>{s.nome.toUpperCase()}</option>)}
-          </select>
+          {/* Rimosso selettore Sala per Mappa Unica */}
+          <span style={{ fontWeight: 'bold', color: '#666' }}>📍 Mappa Completa</span>
         </div>
         
         {isMobile ? (
@@ -546,9 +499,9 @@ export default function App() {
             (Usa due dita sulla mappa per fare Zoom)
           </div>
         ) : (
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, minWidth: '200px', justifyContent: 'flex-end' }}>
             <b style={{fontSize: '14px', color: '#666'}}>🔍 ZOOM:</b> 
-            <input type="range" min="0.2" max="1.2" step="0.1" value={zoomMappa} onChange={e => setZoomMappa(parseFloat(e.target.value))} style={{ width: '100%' }} />
+            <input type="range" min="0.15" max="1.5" step="0.05" value={zoomMappa} onChange={e => setZoomMappa(parseFloat(e.target.value))} style={{ width: '150px' }} />
           </div>
         )}
       </div>
@@ -556,15 +509,14 @@ export default function App() {
       {isAdmin && isEditMode && (
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingBottom: '5px' }}>
             <button onClick={aggiungiTavolo} style={{ background: '#0d6efd', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>➕ Tavolo</button>
-            <button onClick={salvaCorrente} style={{ background: '#28a745', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>📍 Salva Pos.</button>
-            <button onClick={salvaZoomReparto} style={{ background: '#17a2b8', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>🔍 Salva Zoom</button>
+            <button onClick={aggiungiMuro} style={{ background: '#495057', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>🧱 Aggiungi Muro</button>
+            <button onClick={salvaCorrente} style={{ background: '#28a745', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>📍 Salva Mappa</button>
             <button onClick={impostaStandard} style={{ background: '#f3e8ff', color: '#6f42c1', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>⭐ Set Std</button>
             <button onClick={ripristinaStandard} style={{ background: '#fff8e1', color: '#d39e00', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>🔄 Reset Std</button>
-            <button onClick={esportaBackup} style={{ background: '#343a40', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>💾 Backup</button>
-            <button onClick={() => { if(fileInputRef.current) fileInputRef.current.click() }} style={{ background: '#e83e8c', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>📂 Ripristina</button>
         </div>
       )}
 
+      {/* MAPPA SUPER GIGANTE (3000x3000) */}
       <div 
         ref={mapContainerRef}
         onMouseDown={handleMouseDownMap}
@@ -576,8 +528,64 @@ export default function App() {
         onTouchEnd={handleTouchEnd}
         style={{ width: '100%', height: isMobile ? '55vh' : '75vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative', cursor: isPanning ? 'grabbing' : (isEditMode ? 'default' : 'grab') }}
       >
-        <div style={{ width: '1300px', height: '1300px', position: 'relative', transform: `scale(${parseFloat(zoomMappa) || 0.2})`, transformOrigin: 'top left' }}>
-          {(tavoli || []).map(t => {
+        <div style={{ width: '3000px', height: '3000px', position: 'relative', transform: `scale(${parseFloat(zoomMappa) || 0.3})`, transformOrigin: 'top left' }}>
+          
+          {/* DISEGNA I TAVOLI UNITI (Se non siamo in modifica) */}
+          {!isEditMode && mergedReservations.map(p => {
+             const assignedTables = tuttiITavoli.filter(t => p.tavoli_assegnati.includes(t.id) && !String(t.numero_tavolo).startsWith('MURO'));
+             if (assignedTables.length < 2) return null;
+             
+             const minX = Math.min(...assignedTables.map(t => Number(t.pos_x) || 0));
+             const minY = Math.min(...assignedTables.map(t => Number(t.pos_y) || 0));
+             const maxX = Math.max(...assignedTables.map(t => Number(t.pos_x) || 0));
+             const maxY = Math.max(...assignedTables.map(t => Number(t.pos_y) || 0));
+             const width = (maxX - minX) + 145; 
+             const height = (maxY - minY) + 145;
+
+             let bgCol = '#fd7e14'; let bCol = '#d35400';
+             if (p.presente) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
+
+             return (
+               <div key={`mega-${p.id}`}
+                    onClick={(e) => { e.stopPropagation(); setTavoloInfo(assignedTables[0].id); }}
+                    style={{ position: 'absolute', left: minX, top: minY, width: width, height: height, background: bgCol, border: `4px solid ${bCol}`, borderRadius: '25px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, opacity: 0.95, boxShadow: '0px 10px 20px rgba(0,0,0,0.2)' }}>
+                  <strong style={{ fontSize: '24px', marginBottom: '8px', color: '#333' }}>Tav. {assignedTables.map(t => t.numero_tavolo).join(' + ')}</strong>
+                  <div style={{ fontSize: '16px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '8px 16px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold' }}>
+                      {formatOra(p.data_ora)} - {p.nome_cliente} <br/> ({p.numero_persone}p)
+                  </div>
+               </div>
+             )
+          })}
+
+          {/* DISEGNA TUTTI I TAVOLI NORMALI E I MURI */}
+          {(tuttiITavoli || []).map(t => {
+            const isMuro = String(t.numero_tavolo).startsWith('MURO');
+            const isMergedHidden = !isEditMode && mergedTableIds.has(t.id) && !isMuro;
+
+            // Se il tavolo fa parte di un unione, nascondilo (lo copre il Mega-Tavolo)
+            if (isMergedHidden) return null;
+
+            // RENDERIZZAZIONE DEL MURO
+            if (isMuro) {
+               let w = 200, h = 20;
+               const match = String(t.numero_tavolo).match(/MURO_(\d+)x(\d+)/i);
+               if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
+               
+               return (
+                 <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa) || 0.3} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)} bounds="parent">
+                   <div style={{ position: 'absolute', width: `${w}px`, height: `${h}px`, backgroundColor: '#495057', borderRadius: '6px', cursor: isEditMode ? 'move' : 'default', zIndex: 1, border: '1px solid #343a40' }}>
+                     {isAdmin && isEditMode && (
+                        <>
+                          <button onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); e.preventDefault(); modificaInfoTavolo(t); }} style={{ position: 'absolute', top: '-15px', left: '-15px', background: '#f8f9fa', color: '#0d6efd', border: '2px solid #0d6efd', borderRadius: '50%', width: '30px', height: '30px', fontSize: '14px', zIndex: 10 }}>⚙️</button>
+                          <button onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onClick={async e => { e.stopPropagation(); e.preventDefault(); if(window.confirm("Eliminare muro?")) { await supabase.from('tavoli').delete().eq('id', t.id); aggiornaTutto(); } }} style={{ position: 'absolute', top: '-15px', right: '-15px', background: '#dc3545', color: 'white', border: '2px solid white', borderRadius: '50%', width: '30px', height: '30px', fontSize: '14px', zIndex: 10 }}>✖</button>
+                        </>
+                     )}
+                   </div>
+                 </Draggable>
+               );
+            }
+
+            // RENDERIZZAZIONE DEL TAVOLO NORMALE
             const pres = getPrenotazioniTurno(t.id);
             const sel = tavoliSelezionati.includes(t.id);
             let bgCol = 'white'; let bCol = '#adb5bd';
@@ -587,9 +595,9 @@ export default function App() {
             else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
 
             return (
-              <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa) || 0.2} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)} bounds="parent">
+              <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa) || 0.3} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)} bounds="parent">
                 <div onClick={(e) => { e.stopPropagation(); clickTavoloSfondo(t.id); }}
-                     style={{ position: 'absolute', width: '145px', height: '145px', borderRadius: '18px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none' }}>
+                     style={{ position: 'absolute', width: '145px', height: '145px', borderRadius: '18px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none', zIndex: 5 }}>
                   
                   {isAdmin && isEditMode && (
                     <>
@@ -625,14 +633,20 @@ export default function App() {
           {risultatiRicerca.map(p => (
             <div key={p.id} style={{ padding: '12px', borderBottom: '1px solid #eee', background: p.presente ? '#e6f4ea' : '#f8f9fa', borderRadius: '10px', marginBottom: '10px' }}>
               <b style={{color: p.presente ? '#28a745' : '#333'}}>{formatDataLeggibile(p.data_ora)}</b> - <b style={{color: p.presente ? '#28a745' : '#333'}}>{p.nome_cliente}</b> ({p.numero_persone}p)
+              
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
                 <button onClick={() => togglePresenza(p.id, p.presente)} style={{ flex: 1, border: p.presente ? '2px solid #28a745' : '1px solid #ddd', background: p.presente ? '#28a745' : '#fff', color: p.presente ? 'white' : '#666', padding: '8px', borderRadius: '8px', fontWeight: 'bold' }}>{p.presente ? '✅ ARRIVATO' : 'ATTESA'}</button>
+                
                 {prenoInSpostamento === p.id ? (
-                  <select onChange={(e) => spostaTavoloRapido(p.id, e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid #fd7e14' }}><option value="">A Tavolo...</option>{tuttiITavoliOrdinati.map(tav => <option key={tav.id} value={tav.id}>Tav. {tav.numero_tavolo} ({(sale.find(s=>s.id===tav.sala_id)||{}).nome})</option>)}</select>
+                  <select onChange={(e) => spostaTavoloRapido(p.id, e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid #fd7e14' }}>
+                    <option value="">Sposta a Tavolo...</option>
+                    {tuttiITavoliOrdinati.map(tav => <option key={tav.id} value={tav.id}>Tav. {tav.numero_tavolo} ({(sale.find(s=>s.id===tav.sala_id)||{}).nome})</option>)}
+                  </select>
                 ) : (
                   <button onClick={() => setPrenoInSpostamento(p.id)} style={{ flex: 1, background: '#fd7e14', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', fontWeight: 'bold' }}>🔄 SPOSTA</button>
                 )}
-                <button onClick={() => { setEditingId(p.id); setNomeCliente(p.nome_cliente); setNumeroPersone(p.numero_persone); setDataVista(formatData(p.data_ora)); setServizioVista(getServizioDaOra(p.data_ora)); setOraEsatta(formatOra(p.data_ora)); setNote(p.note || ''); setTavoliSelezionati(p.tavoli_assegnati || []); setRicerca(''); window.scrollTo(0,0); }} style={{ flex: 1, border: 'none', background: '#1a73e8', color: 'white', padding: '8px', borderRadius: '8px', fontWeight: 'bold' }}>✏️ MOD</button>
+                
+                <button onClick={() => { setEditingId(p.id); setNomeCliente(p.nome_cliente); setNumeroPersone(p.numero_persone); setDataVista(formatData(p.data_ora)); setServizioVista(getServizioDaOra(p.data_ora)); setOraEsatta(formatOra(p.data_ora)); setNote(p.note || ''); setTavoliSelezionati(p.tavoli_assegnati || []); setRicerca(''); window.scrollTo(0,0); }} style={{ flex: 1, border: 'none', background: '#1a73e8', color: 'white', padding: '8px', borderRadius: '8px', fontWeight: 'bold' }}>✏️ MODIFICA</button>
                 {isAdmin && (
                   <button onClick={async () => { if(window.confirm("Eliminare?")) { await supabase.from('prenotazioni').delete().eq('id', p.id); aggiornaTutto(); } }} style={{ border: 'none', background: '#fff0f0', color: '#dc3545', padding: '8px', borderRadius: '8px', fontWeight: 'bold' }}>🗑️</button>
                 )}
@@ -661,7 +675,10 @@ export default function App() {
                       <button onClick={() => togglePresenza(p.id, p.presente)} style={{ border: 'none', background: p.presente ? '#28a745' : '#e9ecef', color: p.presente ? 'white' : '#666', padding: '8px', borderRadius: '8px', fontWeight: 'bold' }}>{p.presente ? '✅' : '⏳'}</button>
                       
                       {prenoInSpostamento === p.id ? (
-                        <select onChange={(e) => spostaTavoloRapido(p.id, e.target.value)} style={{ padding: '5px', borderRadius: '8px', border: '2px solid #fd7e14', fontSize: '12px', maxWidth: '100px' }}><option value="">A Tav...</option>{tuttiITavoliOrdinati.map(tav => <option key={tav.id} value={tav.id}>T.{tav.numero_tavolo}</option>)}</select>
+                        <select onChange={(e) => spostaTavoloRapido(p.id, e.target.value)} style={{ padding: '5px', borderRadius: '8px', border: '2px solid #fd7e14', fontSize: '12px', maxWidth: '100px' }}>
+                          <option value="">A Tav...</option>
+                          {tuttiITavoliOrdinati.map(tav => <option key={tav.id} value={tav.id}>T.{tav.numero_tavolo}</option>)}
+                        </select>
                       ) : (
                         <button onClick={() => setPrenoInSpostamento(p.id)} style={{ border: 'none', background: '#fd7e14', color: 'white', padding: '8px', borderRadius: '8px', fontSize: '16px' }}>🔄</button>
                       )}
@@ -689,8 +706,9 @@ export default function App() {
       {/* HEADER GLOBALE */}
       <div style={{ background: 'white', padding: '15px', borderRadius: '16px', marginBottom: '15px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-          {/* LOGO IN ALTO A SINISTRA */}
-          <img src="/logo.png" alt="Belvedere" style={{ height: '35px', objectFit: 'contain' }} />
+          
+          {/* LOGO INGRANDITO */}
+          <img src="/logo.png" alt="Belvedere" style={{ height: isMobile ? '55px' : '85px', objectFit: 'contain' }} />
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
              <button onClick={() => setShowDisponibilita(true)} style={{ background: '#17a2b8', color: 'white', padding: '8px 16px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '13px', boxShadow: '0 2px 5px rgba(23,162,184,0.3)', cursor: 'pointer' }}>📊 Disponibilità</button>
@@ -762,10 +780,10 @@ export default function App() {
         );
       })()}
 
-      {/* POP-UP DISPONIBILITÀ GLOBALE (GRIGLIA SCROLLABILE CON CLICK SUL TAVOLO) */}
+      {/* POP-UP DISPONIBILITÀ GLOBALE (GRIGLIA SCROLLABILE SICURA) */}
       {showDisponibilita && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', zIndex: 4000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box' }} onClick={() => setShowDisponibilita(false)}>
-          <div style={{ background: 'white', padding: '25px', borderRadius: '20px', width: '100%', maxWidth: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+          <div style={{ background: 'white', padding: '25px', borderRadius: '20px', width: '100%', maxWidth: '1000px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
             
             {/* Header Fisso */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '15px', flexShrink: 0, flexWrap: 'wrap', gap: '10px' }}>
@@ -780,7 +798,7 @@ export default function App() {
                <button onClick={() => setShowDisponibilita(false)} style={{ background: '#dc3545', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}>CHIUDI ✖</button>
             </div>
             
-            {/* Corpo Scrollabile */}
+            {/* Corpo Scrollabile Internamente */}
             <div style={{ overflowY: 'auto', flexGrow: 1, paddingRight: '10px' }}>
               {(sale || []).map(s => {
                  const tavoliSala = tuttiITavoliOrdinati.filter(t => t.sala_id === s.id);
@@ -804,7 +822,7 @@ export default function App() {
                            <div 
                              key={t.id} 
                              onClick={() => { setTavoloInfo(t.id); setShowDisponibilita(false); }} 
-                             style={{ padding: '10px 5px', borderRadius: '10px', border: `2px solid ${borderC}`, background: bgC, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.1s', ':hover': { transform: 'scale(1.05)' } }}
+                             style={{ padding: '10px 5px', borderRadius: '10px', border: `2px solid ${borderC}`, background: bgC, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden', cursor: 'pointer' }}
                            >
                              <strong style={{ fontSize: '15px', color: isDouble ? '#dc3545' : '#333' }}>Tav. {t.numero_tavolo}</strong>
                              <div style={{ fontSize: '11px', marginTop: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
