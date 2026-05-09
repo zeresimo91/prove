@@ -43,6 +43,9 @@ export default function App() {
   const [dataVista, setDataVista] = useState(formatData(new Date().toISOString()));
   const [servizioVista, setServizioVista] = useState(new Date().getHours() < 16 ? 'pranzo' : 'cena');
   
+  const [dimensioneTestoTavolo] = useState(18); 
+  const [dimensioneTestoCliente] = useState(12);
+
   const [nomeCliente, setNomeCliente] = useState('');
   const [numeroPersone, setNumeroPersone] = useState('');
   const [oraEsatta, setOraEsatta] = useState('');
@@ -289,10 +292,14 @@ export default function App() {
   }
 
   async function aggiungiMuro() {
-    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_150x20', capacita: 0, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
+    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_300x20', capacita: 0, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
     await caricaTuttiITavoli(); 
     esportaBackup(); 
   }
+
+  const aggiornaPosizioneLocale = (id, x, y) => { 
+      setTuttiITavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); 
+  };
 
   async function salvaCorrente() {
     const promises = tuttiITavoli.map(t => supabase.from('tavoli').update({ pos_x: t.pos_x, pos_y: t.pos_y }).eq('id', t.id));
@@ -304,7 +311,7 @@ export default function App() {
   }
 
   async function recuperaTavoli() {
-    if (!window.confirm("Portare tutti i tavoli in alto a sinistra?")) return;
+    if (!window.confirm("Portare tutti i tavoli in alto a sinistra? Usa questa funzione solo se hai perso dei tavoli fuori dallo schermo!")) return;
     const promises = tuttiITavoli.map((t, index) => {
         let nx = (index % 8) * 110 + 20;
         let ny = Math.floor(index / 8) * 110 + 20;
@@ -427,11 +434,6 @@ export default function App() {
     if (isEditMode) return;
     if (oraEsatta) setTavoliSelezionati(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]);
     else setTavoloInfo(id);
-  };
-
-  // AGGIORNAMENTO POSIZIONE. Cambia lo stato garantendo l'aggiornamento reattivo.
-  const aggiornaPosizioneLocale = (id, x, y) => { 
-      setTuttiITavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); 
   };
 
   async function modificaInfoTavolo(t) {
@@ -604,7 +606,6 @@ export default function App() {
                const match = String(t.numero_tavolo).match(/MURO_(\d+)x(\d+)/i);
                if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
                
-               // KEY FISSA (t.id), POSITION CONTROLLATA, ONSTOP AGGIORNA STATO
                return (
                  <Draggable 
                     key={t.id} 
@@ -633,7 +634,6 @@ export default function App() {
             else if (pres.some(p => p.presente)) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
             else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
 
-            // KEY FISSA (t.id), POSITION CONTROLLATA, ONSTOP AGGIORNA STATO, EVENTI ISOLATI
             return (
               <Draggable 
                  key={t.id} 
