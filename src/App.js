@@ -95,7 +95,7 @@ export default function App() {
     }
   }, []);
 
-  // Zoom base per PC/Tablet
+  // Zoom base per PC/Tablet tramite tasti (+ e -)
   const zoomIn = () => setZoomMappa(prev => Math.min(prev + 0.1, 1.8));
   const zoomOut = () => setZoomMappa(prev => Math.max(prev - 0.1, 0.15));
 
@@ -423,7 +423,6 @@ export default function App() {
     else setTavoloInfo(id);
   };
 
-  // Aggiornamento Posizione DRAG NATIVO
   const aggiornaPosizioneLocale = (id, x, y) => { 
       setTavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); 
       setTuttiITavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); 
@@ -540,12 +539,6 @@ export default function App() {
             <button onClick={() => setIsEditMode(!isEditMode)} style={{ padding: '8px 12px', borderRadius: '12px', border: 'none', background: isEditMode ? '#28a745' : '#dc3545', color: 'white', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>{isEditMode ? "🔓 Modifica ON" : "🔒 Modifica Mappa"}</button>
           )}
         </div>
-        
-        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', background: '#f8f9fa', padding: '5px 15px', borderRadius: '20px', border: '1px solid #ddd' }}>
-            <span style={{ fontSize: '13px', color: '#666', fontWeight: 'bold' }}>ZOOM:</span>
-            <button onClick={zoomOut} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: '35px', height: '35px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>-</button>
-            <button onClick={zoomIn} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: '35px', height: '35px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>+</button>
-        </div>
       </div>
 
       {isAdmin && isEditMode && (
@@ -559,7 +552,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MAPPA PULITA CON SCORRIMENTO NATIVO DEL BROWSER. NESSUN CONFLITTO CON IL TRASCINAMENTO! */}
+      {/* Mappa con SCROLL NATIVO. Nessun trucchetto di panning manuale o overflow bloccato. */}
       <div 
         ref={mapContainerRef}
         style={{ flex: 1, minHeight: isMobile ? '55vh' : '65vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative' }}
@@ -574,8 +567,8 @@ export default function App() {
              const minY = Math.min(...assignedTables.map(t => Number(t.pos_y) || 0));
              const maxX = Math.max(...assignedTables.map(t => Number(t.pos_x) || 0));
              const maxY = Math.max(...assignedTables.map(t => Number(t.pos_y) || 0));
-             const width = (maxX - minX) + 90; 
-             const height = (maxY - minY) + 90;
+             const width = (maxX - minX) + 120; 
+             const height = (maxY - minY) + 120;
 
              let bgCol = '#fd7e14'; let bCol = '#d35400';
              if (p.presente) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
@@ -583,9 +576,9 @@ export default function App() {
              return (
                <div key={`mega-${p.id}`}
                     onClick={(e) => { e.stopPropagation(); setTavoloInfo(assignedTables[0].id); }}
-                    style={{ position: 'absolute', left: minX, top: minY, width: width, height: height, background: bgCol, border: `4px solid ${bCol}`, borderRadius: '15px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, opacity: 0.95, boxShadow: '0px 10px 20px rgba(0,0,0,0.2)' }}>
-                  <strong style={{ fontSize: '20px', marginBottom: '8px', color: '#333' }}>Tav. {assignedTables.map(t => t.numero_tavolo).join(' + ')}</strong>
-                  <div style={{ fontSize: '14px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '6px 12px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold' }}>
+                    style={{ position: 'absolute', left: minX, top: minY, width: width, height: height, background: bgCol, border: `4px solid ${bCol}`, borderRadius: '25px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, opacity: 0.95, boxShadow: '0px 10px 20px rgba(0,0,0,0.2)' }}>
+                  <strong style={{ fontSize: '24px', marginBottom: '8px', color: '#333' }}>Tav. {assignedTables.map(t => t.numero_tavolo).join(' + ')}</strong>
+                  <div style={{ fontSize: '16px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '8px 16px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold' }}>
                       {formatOra(p.data_ora)} - {p.nome_cliente} <br/> ({p.numero_persone}p)
                   </div>
                </div>
@@ -821,7 +814,7 @@ export default function App() {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', zIndex: 99999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box' }} onClick={() => setShowDisponibilita(false)}>
           <div style={{ background: 'white', padding: '25px', borderRadius: '20px', width: '100%', maxWidth: '1000px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '15px', flexShrink: 0, flexWrap: 'wrap', gap: '10px' }}>
-               <h2 style={{ margin: '0, color: '#1a73e8' }}>📊 Disponibilità</h2>
+               <h2 style={{ margin: 0, color: '#1a73e8' }}>📊 Disponibilità</h2>
                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <input type="date" value={dataVista} onChange={e => setDataVista(e.target.value)} style={{ padding: '8px', borderRadius: '10px', border: '1px solid #ccc', fontSize: '14px' }} />
                   <div style={{ background: '#f1f3f5', borderRadius: '10px', padding: '4px', display: 'flex', gap: '4px' }}>
