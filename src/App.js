@@ -66,17 +66,12 @@ export default function App() {
   const [showStatistiche, setShowStatistiche] = useState(false);
   const [showCestino, setShowCestino] = useState(false);
 
-  // Gestione Mappa Navigabile
-  const mapContainerRef = useRef(null);
-  const [isPanning, setIsPanning] = useState(false);
-  const [startPan, setStartPan] = useState({ x: 0, y: 0 });
-  const [scrollPan, setScrollPan] = useState({ left: 0, top: 0 });
-  const [pinchDist, setPinchDist] = useState(null);
-  const [pinchZoom, setPinchZoom] = useState(null);
-
   const fileInputRef = useRef(null);
+  const mapContainerRef = useRef(null);
+  
   const isAdmin = userRole === 'admin';
 
+  // Impedisce al realtime di aggiornare l'interfaccia mentre l'Admin sta modificando i tavoli
   const isEditModeRef = useRef(isEditMode);
   useEffect(() => {
     isEditModeRef.current = isEditMode;
@@ -98,13 +93,13 @@ export default function App() {
       setIsLoggedIn(true);
       setUserRole(savedRole);
     }
-    const meta = document.createElement('meta');
-    meta.name = "viewport";
-    meta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
-    document.getElementsByTagName('head')[0].appendChild(meta);
   }, []);
 
-  // REALTIME (In pausa durante modifica)
+  // Zoom base per PC/Tablet
+  const zoomIn = () => setZoomMappa(prev => Math.min(prev + 0.1, 1.8));
+  const zoomOut = () => setZoomMappa(prev => Math.max(prev - 0.1, 0.15));
+
+  // SUPABASE REALTIME
   useEffect(() => {
     if (isLoggedIn) {
       const channel = supabase
@@ -224,7 +219,7 @@ export default function App() {
     if (!error) { 
         resetForm(); 
         aggiornaTutto(); 
-        // Torna alla data odierna
+        // Torna in automatico alla data di OGGI dopo aver salvato
         setDataVista(formatData(new Date().toISOString()));
         setServizioVista(new Date().getHours() < 16 ? 'pranzo' : 'cena');
         setTimeout(scaricaAgendaFile, 1000); 
@@ -282,13 +277,13 @@ export default function App() {
   }
 
   async function aggiungiTavolo() {
-    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: '?', capacita: 2, pos_x: 20, pos_y: 20, std_x: 20, std_y: 20 }]);
+    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: '?', capacita: 2, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
     await caricaTuttiITavoli(); 
     esportaBackup(); 
   }
 
   async function aggiungiMuro() {
-    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_150x20', capacita: 0, pos_x: 20, pos_y: 20, std_x: 20, std_y: 20 }]);
+    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_300x20', capacita: 0, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
     await caricaTuttiITavoli(); 
     esportaBackup(); 
   }
@@ -302,7 +297,6 @@ export default function App() {
     alert("📍 Posizioni salvate su Mappa Unica! Backup generato.");
   }
 
-  // ECCO LA FUNZIONE CHE MANCAVA E CHE FACEVA CRASHARE TUTTO!
   async function recuperaTavoli() {
     if (!window.confirm("Portare tutti i tavoli in alto a sinistra? Usa questa funzione solo se hai perso dei tavoli fuori dallo schermo!")) return;
     const promises = tuttiITavoli.map((t, index) => {
@@ -429,6 +423,7 @@ export default function App() {
     else setTavoloInfo(id);
   };
 
+  // Aggiornamento Posizione DRAG NATIVO
   const aggiornaPosizioneLocale = (id, x, y) => { 
       setTavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); 
       setTuttiITavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); 
@@ -545,6 +540,12 @@ export default function App() {
             <button onClick={() => setIsEditMode(!isEditMode)} style={{ padding: '8px 12px', borderRadius: '12px', border: 'none', background: isEditMode ? '#28a745' : '#dc3545', color: 'white', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>{isEditMode ? "🔓 Modifica ON" : "🔒 Modifica Mappa"}</button>
           )}
         </div>
+        
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', background: '#f8f9fa', padding: '5px 15px', borderRadius: '20px', border: '1px solid #ddd' }}>
+            <span style={{ fontSize: '13px', color: '#666', fontWeight: 'bold' }}>ZOOM:</span>
+            <button onClick={zoomOut} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: '35px', height: '35px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>-</button>
+            <button onClick={zoomIn} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: '35px', height: '35px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>+</button>
+        </div>
       </div>
 
       {isAdmin && isEditMode && (
@@ -555,15 +556,16 @@ export default function App() {
             <button onClick={impostaStandard} style={{ background: '#f3e8ff', color: '#6f42c1', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>⭐ Set Std</button>
             <button onClick={ripristinaStandard} style={{ background: '#fff8e1', color: '#d39e00', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>🔄 R. Std</button>
             <button onClick={recuperaTavoli} style={{ background: '#ffc107', color: 'black', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>🧲 Recupera Tavoli</button>
-            <button onClick={esportaBackup} style={{ background: '#343a40', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>💾 Backup</button>
-            <button onClick={() => { if(fileInputRef.current) fileInputRef.current.click() }} style={{ background: '#e83e8c', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>📂 Ripristina</button>
         </div>
       )}
 
-      {/* MAPPA PULITA, FLUIDA E 100% SU MISURA */}
+      {/* MAPPA PULITA CON SCORRIMENTO NATIVO DEL BROWSER. NESSUN CONFLITTO CON IL TRASCINAMENTO! */}
       <div 
-        style={{ flex: 1, minHeight: isMobile ? '55vh' : '65vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', position: 'relative', overflow: 'hidden' }}
+        ref={mapContainerRef}
+        style={{ flex: 1, minHeight: isMobile ? '55vh' : '65vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative' }}
       >
+        <div style={{ width: '4000px', height: '4000px', position: 'relative', transform: `scale(${parseFloat(zoomMappa)})`, transformOrigin: 'top left' }}>
+          
           {!isEditMode && mergedReservations.map(p => {
              const assignedTables = tuttiITavoli.filter(t => p.tavoli_assegnati.includes(t.id) && !String(t.numero_tavolo).startsWith('MURO'));
              if (assignedTables.length < 2) return null;
@@ -581,9 +583,9 @@ export default function App() {
              return (
                <div key={`mega-${p.id}`}
                     onClick={(e) => { e.stopPropagation(); setTavoloInfo(assignedTables[0].id); }}
-                    style={{ position: 'absolute', left: minX, top: minY, width: width, height: height, background: bgCol, border: `4px solid ${bCol}`, borderRadius: '18px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, opacity: 0.95, boxShadow: '0px 10px 20px rgba(0,0,0,0.2)' }}>
-                  <strong style={{ fontSize: '18px', marginBottom: '8px', color: '#333' }}>Tav. {assignedTables.map(t => t.numero_tavolo).join(' + ')}</strong>
-                  <div style={{ fontSize: '13px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '6px 12px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold' }}>
+                    style={{ position: 'absolute', left: minX, top: minY, width: width, height: height, background: bgCol, border: `4px solid ${bCol}`, borderRadius: '15px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, opacity: 0.95, boxShadow: '0px 10px 20px rgba(0,0,0,0.2)' }}>
+                  <strong style={{ fontSize: '20px', marginBottom: '8px', color: '#333' }}>Tav. {assignedTables.map(t => t.numero_tavolo).join(' + ')}</strong>
+                  <div style={{ fontSize: '14px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '6px 12px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold' }}>
                       {formatOra(p.data_ora)} - {p.nome_cliente} <br/> ({p.numero_persone}p)
                   </div>
                </div>
@@ -602,7 +604,7 @@ export default function App() {
                if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
                
                return (
-                 <Draggable key={isEditMode ? `edit-${t.id}` : `view-${t.id}-${t.pos_x}-${t.pos_y}`} disabled={!isEditMode} bounds="parent" defaultPosition={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
+                 <Draggable key={isEditMode ? `edit-${t.id}` : `view-${t.id}`} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                    <div style={{ position: 'absolute', width: `${w}px`, height: `${h}px`, backgroundColor: '#495057', borderRadius: '6px', cursor: isEditMode ? 'move' : 'default', zIndex: 1, border: '1px solid #343a40' }}>
                      {isAdmin && isEditMode && (
                         <>
@@ -624,7 +626,7 @@ export default function App() {
             else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
 
             return (
-              <Draggable key={isEditMode ? `edit-${t.id}` : `view-${t.id}-${t.pos_x}-${t.pos_y}`} disabled={!isEditMode} bounds="parent" defaultPosition={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
+              <Draggable key={isEditMode ? `edit-${t.id}` : `view-${t.id}`} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                 <div onClick={(e) => { e.stopPropagation(); clickTavoloSfondo(t.id); }}
                      style={{ position: 'absolute', width: '90px', height: '90px', borderRadius: '15px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none', zIndex: 5 }}>
                   
@@ -647,6 +649,7 @@ export default function App() {
               </Draggable>
             );
           })}
+        </div>
       </div>
     </div>
   );
@@ -818,7 +821,7 @@ export default function App() {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', zIndex: 99999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box' }} onClick={() => setShowDisponibilita(false)}>
           <div style={{ background: 'white', padding: '25px', borderRadius: '20px', width: '100%', maxWidth: '1000px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '15px', flexShrink: 0, flexWrap: 'wrap', gap: '10px' }}>
-               <h2 style={{ margin: 0, color: '#1a73e8' }}>📊 Disponibilità</h2>
+               <h2 style={{ margin: '0, color: '#1a73e8' }}>📊 Disponibilità</h2>
                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <input type="date" value={dataVista} onChange={e => setDataVista(e.target.value)} style={{ padding: '8px', borderRadius: '10px', border: '1px solid #ccc', fontSize: '14px' }} />
                   <div style={{ background: '#f1f3f5', borderRadius: '10px', padding: '4px', display: 'flex', gap: '4px' }}>
