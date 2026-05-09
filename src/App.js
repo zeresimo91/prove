@@ -43,9 +43,6 @@ export default function App() {
   const [dataVista, setDataVista] = useState(formatData(new Date().toISOString()));
   const [servizioVista, setServizioVista] = useState(new Date().getHours() < 16 ? 'pranzo' : 'cena');
   
-  const [dimensioneTestoTavolo] = useState(18); 
-  const [dimensioneTestoCliente] = useState(12);
-
   const [nomeCliente, setNomeCliente] = useState('');
   const [numeroPersone, setNumeroPersone] = useState('');
   const [oraEsatta, setOraEsatta] = useState('');
@@ -215,7 +212,7 @@ export default function App() {
     if (!error) { 
         resetForm(); 
         aggiornaTutto(); 
-        // Reset alla data odierna dopo aver salvato la prenotazione!
+        // Torna alla data odierna
         setDataVista(formatData(new Date().toISOString()));
         setServizioVista(new Date().getHours() < 16 ? 'pranzo' : 'cena');
         setTimeout(scaricaAgendaFile, 1000); 
@@ -279,7 +276,7 @@ export default function App() {
   }
 
   async function aggiungiMuro() {
-    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_300x20', capacita: 0, pos_x: 20, pos_y: 20, std_x: 20, std_y: 20 }]);
+    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_150x20', capacita: 0, pos_x: 20, pos_y: 20, std_x: 20, std_y: 20 }]);
     await caricaTuttiITavoli(); 
     esportaBackup(); 
   }
@@ -291,6 +288,20 @@ export default function App() {
     await caricaTuttiITavoli();
     esportaBackup(); 
     alert("📍 Posizioni salvate su Mappa Unica! Backup generato.");
+  }
+
+  // NUOVA FUNZIONE: Tira i tavoli dispersi nello schermo
+  async function recuperaTavoli() {
+    if (!window.confirm("Portare tutti i tavoli in alto a sinistra? Usa questa funzione solo se hai perso dei tavoli fuori dallo schermo!")) return;
+    const promises = tuttiITavoli.map((t, index) => {
+        // Li incolonna in alto a sinistra per ritrovarli
+        let nx = (index % 8) * 110 + 20;
+        let ny = Math.floor(index / 8) * 110 + 20;
+        return supabase.from('tavoli').update({ pos_x: nx, pos_y: ny }).eq('id', t.id);
+    });
+    await Promise.all(promises);
+    alert("🧲 Tavoli recuperati!");
+    aggiornaTutto();
   }
 
   async function impostaStandard() {
@@ -532,6 +543,7 @@ export default function App() {
             <button onClick={salvaCorrente} style={{ background: '#28a745', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>📍 Salva</button>
             <button onClick={impostaStandard} style={{ background: '#f3e8ff', color: '#6f42c1', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>⭐ Set Std</button>
             <button onClick={ripristinaStandard} style={{ background: '#fff8e1', color: '#d39e00', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>🔄 R. Std</button>
+            <button onClick={recuperaTavoli} style={{ background: '#ffc107', color: 'black', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>🧲 Recupera Tavoli</button>
             <button onClick={esportaBackup} style={{ background: '#343a40', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>💾 Backup</button>
             <button onClick={() => { if(fileInputRef.current) fileInputRef.current.click() }} style={{ background: '#e83e8c', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>📂 Ripristina</button>
         </div>
@@ -549,8 +561,8 @@ export default function App() {
              const minY = Math.min(...assignedTables.map(t => Number(t.pos_y) || 0));
              const maxX = Math.max(...assignedTables.map(t => Number(t.pos_x) || 0));
              const maxY = Math.max(...assignedTables.map(t => Number(t.pos_y) || 0));
-             const width = (maxX - minX) + 120; 
-             const height = (maxY - minY) + 120;
+             const width = (maxX - minX) + 90; 
+             const height = (maxY - minY) + 90;
 
              let bgCol = '#fd7e14'; let bCol = '#d35400';
              if (p.presente) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
@@ -558,9 +570,9 @@ export default function App() {
              return (
                <div key={`mega-${p.id}`}
                     onClick={(e) => { e.stopPropagation(); setTavoloInfo(assignedTables[0].id); }}
-                    style={{ position: 'absolute', left: minX, top: minY, width: width, height: height, background: bgCol, border: `4px solid ${bCol}`, borderRadius: '25px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, opacity: 0.95, boxShadow: '0px 10px 20px rgba(0,0,0,0.2)' }}>
-                  <strong style={{ fontSize: '24px', marginBottom: '8px', color: '#333' }}>Tav. {assignedTables.map(t => t.numero_tavolo).join(' + ')}</strong>
-                  <div style={{ fontSize: '16px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '8px 16px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold' }}>
+                    style={{ position: 'absolute', left: minX, top: minY, width: width, height: height, background: bgCol, border: `4px solid ${bCol}`, borderRadius: '18px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, opacity: 0.95, boxShadow: '0px 10px 20px rgba(0,0,0,0.2)' }}>
+                  <strong style={{ fontSize: '18px', marginBottom: '8px', color: '#333' }}>Tav. {assignedTables.map(t => t.numero_tavolo).join(' + ')}</strong>
+                  <div style={{ fontSize: '13px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '6px 12px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold' }}>
                       {formatOra(p.data_ora)} - {p.nome_cliente} <br/> ({p.numero_persone}p)
                   </div>
                </div>
@@ -574,12 +586,13 @@ export default function App() {
             if (isMergedHidden) return null;
 
             if (isMuro) {
-               let w = 200, h = 20;
+               let w = 150, h = 20;
                const match = String(t.numero_tavolo).match(/MURO_(\d+)x(\d+)/i);
                if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
                
                return (
-                 <Draggable key={t.id} disabled={!isEditMode} bounds="parent" position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
+                 // SOLUZIONE DRAG STUCK: Usiamo defaultPosition invece di position e includiamo un bound limit
+                 <Draggable key={isEditMode ? `edit-${t.id}` : `view-${t.id}-${t.pos_x}-${t.pos_y}`} disabled={!isEditMode} bounds="parent" defaultPosition={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                    <div style={{ position: 'absolute', width: `${w}px`, height: `${h}px`, backgroundColor: '#495057', borderRadius: '6px', cursor: isEditMode ? 'move' : 'default', zIndex: 1, border: '1px solid #343a40' }}>
                      {isAdmin && isEditMode && (
                         <>
@@ -601,22 +614,23 @@ export default function App() {
             else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
 
             return (
-              <Draggable key={t.id} disabled={!isEditMode} bounds="parent" position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
+              // SOLUZIONE DRAG STUCK
+              <Draggable key={isEditMode ? `edit-${t.id}` : `view-${t.id}-${t.pos_x}-${t.pos_y}`} disabled={!isEditMode} bounds="parent" defaultPosition={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                 <div onClick={(e) => { e.stopPropagation(); clickTavoloSfondo(t.id); }}
-                     style={{ position: 'absolute', width: '120px', height: '120px', borderRadius: '18px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none', zIndex: 5 }}>
+                     style={{ position: 'absolute', width: '90px', height: '90px', borderRadius: '15px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none', zIndex: 5 }}>
                   
                   {isAdmin && isEditMode && (
                     <>
-                      <button onMouseDown={(e) => { e.stopPropagation(); }} onTouchStart={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); e.preventDefault(); modificaInfoTavolo(t); }} style={{ position: 'absolute', top: '-18px', left: '-18px', zIndex: 9999, background: '#f8f9fa', color: '#0d6efd', border: '2px solid #0d6efd', borderRadius: '50%', width: '35px', height: '35px', fontSize: '18px', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚙️</button>
-                      <button onMouseDown={(e) => { e.stopPropagation(); }} onTouchStart={(e) => { e.stopPropagation(); }} onClick={async (e) => { e.stopPropagation(); e.preventDefault(); if(window.confirm("Eliminare definitivamente il tavolo?")) { await supabase.from('tavoli').delete().eq('id', t.id); aggiornaTutto(); } }} style={{ position: 'absolute', top: '-18px', right: '-18px', zIndex: 9999, background: '#dc3545', color: 'white', border: '2px solid white', borderRadius: '50%', width: '35px', height: '35px', fontSize: '16px', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✖</button>
+                      <button onMouseDown={(e) => { e.stopPropagation(); }} onTouchStart={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); e.preventDefault(); modificaInfoTavolo(t); }} style={{ position: 'absolute', top: '-18px', left: '-18px', zIndex: 9999, background: '#f8f9fa', color: '#0d6efd', border: '2px solid #0d6efd', borderRadius: '50%', width: '30px', height: '30px', fontSize: '15px', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚙️</button>
+                      <button onMouseDown={(e) => { e.stopPropagation(); }} onTouchStart={(e) => { e.stopPropagation(); }} onClick={async (e) => { e.stopPropagation(); e.preventDefault(); if(window.confirm("Eliminare definitivamente il tavolo?")) { await supabase.from('tavoli').delete().eq('id', t.id); aggiornaTutto(); } }} style={{ position: 'absolute', top: '-18px', right: '-18px', zIndex: 9999, background: '#dc3545', color: 'white', border: '2px solid white', borderRadius: '50%', width: '30px', height: '30px', fontSize: '15px', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✖</button>
                     </>
                   )}
 
                   <strong style={{ fontSize: `${dimensioneTestoTavolo}px`, marginBottom: '2px', color: (bgCol === '#dc3545') ? 'white' : '#333' }}>{t.numero_tavolo}</strong>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '95%' }}>
                     {pres.map(p => (
-                      <div key={p.id} onClick={(e) => { e.stopPropagation(); setTavoloInfo(t.id); }} style={{ fontSize: `${dimensioneTestoCliente}px`, background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '3px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold', wordBreak: 'break-word', whiteSpace: 'normal', border: p.presente ? '2px solid white' : 'none', lineHeight: '1.2' }}>
-                        {formatOra(p.data_ora)} - {p.nome_cliente} ({p.numero_persone}p)
+                      <div key={p.id} onClick={(e) => { e.stopPropagation(); setTavoloInfo(t.id); }} style={{ fontSize: `10px`, background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '2px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: p.presente ? '1px solid white' : 'none', lineHeight: '1.2' }}>
+                        {formatOra(p.data_ora)} - {p.nome_cliente}
                       </div>
                     ))}
                   </div>
