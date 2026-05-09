@@ -66,12 +66,17 @@ export default function App() {
   const [showStatistiche, setShowStatistiche] = useState(false);
   const [showCestino, setShowCestino] = useState(false);
 
-  const fileInputRef = useRef(null);
+  // Gestione Mappa
   const mapContainerRef = useRef(null);
-  
+  const [isPanning, setIsPanning] = useState(false);
+  const [startPan, setStartPan] = useState({ x: 0, y: 0 });
+  const [scrollPan, setScrollPan] = useState({ left: 0, top: 0 });
+  const [pinchDist, setPinchDist] = useState(null);
+  const [pinchZoom, setPinchZoom] = useState(null);
+
+  const fileInputRef = useRef(null);
   const isAdmin = userRole === 'admin';
 
-  // Impedisce al realtime di aggiornare l'interfaccia mentre l'Admin sta modificando i tavoli
   const isEditModeRef = useRef(isEditMode);
   useEffect(() => {
     isEditModeRef.current = isEditMode;
@@ -93,13 +98,16 @@ export default function App() {
       setIsLoggedIn(true);
       setUserRole(savedRole);
     }
+    const meta = document.createElement('meta');
+    meta.name = "viewport";
+    meta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
+    document.getElementsByTagName('head')[0].appendChild(meta);
   }, []);
 
-  // Zoom base per PC/Tablet tramite tasti (+ e -)
   const zoomIn = () => setZoomMappa(prev => Math.min(prev + 0.1, 1.8));
   const zoomOut = () => setZoomMappa(prev => Math.max(prev - 0.1, 0.15));
 
-  // SUPABASE REALTIME
+  // REALTIME
   useEffect(() => {
     if (isLoggedIn) {
       const channel = supabase
@@ -219,7 +227,6 @@ export default function App() {
     if (!error) { 
         resetForm(); 
         aggiornaTutto(); 
-        // Torna in automatico alla data di OGGI dopo aver salvato
         setDataVista(formatData(new Date().toISOString()));
         setServizioVista(new Date().getHours() < 16 ? 'pranzo' : 'cena');
         setTimeout(scaricaAgendaFile, 1000); 
@@ -417,6 +424,23 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // NESSUNA FUNZIONE DI PANNING MANUALE DEL MOUSE. 
+  // Usa le scrollbar native del computer per spostarti, così il drag dei tavoli non andrà mai in palla!
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      setPinchDist(Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY));
+      setPinchZoom(zoomMappa);
+    }
+  };
+  const handleTouchMove = (e) => {
+    if (e.touches.length === 2 && pinchDist) {
+      let newZ = pinchZoom * (Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY) / pinchDist);
+      if (newZ < 0.15) newZ = 0.15; if (newZ > 1.8) newZ = 1.8;
+      setZoomMappa(newZ);
+    }
+  };
+  const handleTouchEnd = () => { setPinchDist(null); setIsPanning(false); };
+
   const clickTavoloSfondo = (id) => {
     if (isEditMode) return;
     if (oraEsatta) setTavoliSelezionati(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]);
@@ -539,6 +563,12 @@ export default function App() {
             <button onClick={() => setIsEditMode(!isEditMode)} style={{ padding: '8px 12px', borderRadius: '12px', border: 'none', background: isEditMode ? '#28a745' : '#dc3545', color: 'white', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>{isEditMode ? "🔓 Modifica ON" : "🔒 Modifica Mappa"}</button>
           )}
         </div>
+        
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', background: '#f8f9fa', padding: '5px 15px', borderRadius: '20px', border: '1px solid #ddd' }}>
+            <span style={{ fontSize: '13px', color: '#666', fontWeight: 'bold' }}>ZOOM:</span>
+            <button onClick={zoomOut} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: '35px', height: '35px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>-</button>
+            <button onClick={zoomIn} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: '35px', height: '35px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>+</button>
+        </div>
       </div>
 
       {isAdmin && isEditMode && (
@@ -549,12 +579,17 @@ export default function App() {
             <button onClick={impostaStandard} style={{ background: '#f3e8ff', color: '#6f42c1', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>⭐ Set Std</button>
             <button onClick={ripristinaStandard} style={{ background: '#fff8e1', color: '#d39e00', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>🔄 R. Std</button>
             <button onClick={recuperaTavoli} style={{ background: '#ffc107', color: 'black', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>🧲 Recupera Tavoli</button>
+            <button onClick={esportaBackup} style={{ background: '#343a40', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>💾 Backup</button>
+            <button onClick={() => { if(fileInputRef.current) fileInputRef.current.click() }} style={{ background: '#e83e8c', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>📂 Ripristina</button>
         </div>
       )}
 
-      {/* Mappa con SCROLL NATIVO. Nessun trucchetto di panning manuale o overflow bloccato. */}
+      {/* MAPPA PULITA E NATIVA: NESSUN CONFLITTO CON IL MOUSE */}
       <div 
         ref={mapContainerRef}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         style={{ flex: 1, minHeight: isMobile ? '55vh' : '65vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative' }}
       >
         <div style={{ width: '4000px', height: '4000px', position: 'relative', transform: `scale(${parseFloat(zoomMappa)})`, transformOrigin: 'top left' }}>
@@ -567,8 +602,8 @@ export default function App() {
              const minY = Math.min(...assignedTables.map(t => Number(t.pos_y) || 0));
              const maxX = Math.max(...assignedTables.map(t => Number(t.pos_x) || 0));
              const maxY = Math.max(...assignedTables.map(t => Number(t.pos_y) || 0));
-             const width = (maxX - minX) + 120; 
-             const height = (maxY - minY) + 120;
+             const width = (maxX - minX) + 90; 
+             const height = (maxY - minY) + 90;
 
              let bgCol = '#fd7e14'; let bCol = '#d35400';
              if (p.presente) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
@@ -576,9 +611,9 @@ export default function App() {
              return (
                <div key={`mega-${p.id}`}
                     onClick={(e) => { e.stopPropagation(); setTavoloInfo(assignedTables[0].id); }}
-                    style={{ position: 'absolute', left: minX, top: minY, width: width, height: height, background: bgCol, border: `4px solid ${bCol}`, borderRadius: '25px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, opacity: 0.95, boxShadow: '0px 10px 20px rgba(0,0,0,0.2)' }}>
-                  <strong style={{ fontSize: '24px', marginBottom: '8px', color: '#333' }}>Tav. {assignedTables.map(t => t.numero_tavolo).join(' + ')}</strong>
-                  <div style={{ fontSize: '16px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '8px 16px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold' }}>
+                    style={{ position: 'absolute', left: minX, top: minY, width: width, height: height, background: bgCol, border: `4px solid ${bCol}`, borderRadius: '15px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, opacity: 0.95, boxShadow: '0px 10px 20px rgba(0,0,0,0.2)' }}>
+                  <strong style={{ fontSize: '20px', marginBottom: '8px', color: '#333' }}>Tav. {assignedTables.map(t => t.numero_tavolo).join(' + ')}</strong>
+                  <div style={{ fontSize: '14px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '6px 12px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold' }}>
                       {formatOra(p.data_ora)} - {p.nome_cliente} <br/> ({p.numero_persone}p)
                   </div>
                </div>
@@ -596,8 +631,9 @@ export default function App() {
                const match = String(t.numero_tavolo).match(/MURO_(\d+)x(\d+)/i);
                if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
                
+               // KEY PULITA = DRAG FLUIDO
                return (
-                 <Draggable key={isEditMode ? `edit-${t.id}` : `view-${t.id}`} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
+                 <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                    <div style={{ position: 'absolute', width: `${w}px`, height: `${h}px`, backgroundColor: '#495057', borderRadius: '6px', cursor: isEditMode ? 'move' : 'default', zIndex: 1, border: '1px solid #343a40' }}>
                      {isAdmin && isEditMode && (
                         <>
@@ -618,8 +654,9 @@ export default function App() {
             else if (pres.some(p => p.presente)) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
             else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
 
+            // KEY PULITA = DRAG FLUIDO
             return (
-              <Draggable key={isEditMode ? `edit-${t.id}` : `view-${t.id}`} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
+              <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                 <div onClick={(e) => { e.stopPropagation(); clickTavoloSfondo(t.id); }}
                      style={{ position: 'absolute', width: '90px', height: '90px', borderRadius: '15px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none', zIndex: 5 }}>
                   
