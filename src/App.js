@@ -25,9 +25,8 @@ const getServizioDaOra = (isoString) => {
 };
 
 export default function App() {
-  // GESTIONE ACCESSO E RUOLI
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userRole, setUserRole] = useState(null); // 'admin' o 'cameriere'
+  const [userRole, setUserRole] = useState(null); 
   const [passInput, setPassInput] = useState('');
   const [ricordami, setRicordami] = useState(false);
   
@@ -61,7 +60,6 @@ export default function App() {
   const [testoVocale, setTestoVocale] = useState('');
   const [showDisponibilita, setShowDisponibilita] = useState(false);
 
-  // Stati per Mappa (Pinch-to-Zoom Mobile & Drag-Pan PC)
   const [pinchDist, setPinchDist] = useState(null);
   const [pinchZoom, setPinchZoom] = useState(null);
   const mapContainerRef = useRef(null);
@@ -70,8 +68,6 @@ export default function App() {
   const [scrollPan, setScrollPan] = useState({ left: 0, top: 0 });
 
   const fileInputRef = useRef(null);
-
-  // Controlla se è Admin (per abilitare bottoni sensibili)
   const isAdmin = userRole === 'admin';
 
   useEffect(() => {
@@ -92,6 +88,22 @@ export default function App() {
     meta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
     document.getElementsByTagName('head')[0].appendChild(meta);
   }, []);
+
+  // CONNESSIONE REALTIME SUPABASE (I camerieri e l'admin si vedono in tempo reale)
+  useEffect(() => {
+    if (isLoggedIn) {
+      const channel = supabase
+        .channel('schema-db-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'prenotazioni' }, () => {
+          caricaPrenotazioni();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tavoli' }, () => {
+          caricaTuttiITavoli();
+        })
+        .subscribe();
+      return () => { supabase.removeChannel(channel); };
+    }
+  }, [isLoggedIn]);
 
   useEffect(() => {
     if (salaAttiva && sale.length > 0) {
@@ -306,25 +318,17 @@ export default function App() {
     aggiornaTutto();
   }
 
-  // LOGIN CON GESTIONE RUOLI
   const handleLogin = (e) => {
     e.preventDefault();
     const pwd = passInput.toLowerCase().trim();
-    
     if (passInput === "belvedere59") {
       setIsLoggedIn(true);
       setUserRole('admin');
-      if (ricordami) {
-        localStorage.setItem('belvedere_logged_in', 'true');
-        localStorage.setItem('belvedere_user_role', 'admin');
-      }
+      if (ricordami) { localStorage.setItem('belvedere_logged_in', 'true'); localStorage.setItem('belvedere_user_role', 'admin'); }
     } else if (pwd === "seba") {
       setIsLoggedIn(true);
       setUserRole('cameriere');
-      if (ricordami) {
-        localStorage.setItem('belvedere_logged_in', 'true');
-        localStorage.setItem('belvedere_user_role', 'cameriere');
-      }
+      if (ricordami) { localStorage.setItem('belvedere_logged_in', 'true'); localStorage.setItem('belvedere_user_role', 'cameriere'); }
     } else {
       alert("Password errata!");
     }
@@ -334,103 +338,61 @@ export default function App() {
 
   const ascoltaComando = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Il tuo browser o dispositivo non supporta il riconoscimento vocale. Usa Chrome o Safari.");
-      return;
-    }
-
+    if (!SpeechRecognition) return alert("Il browser non supporta il riconoscimento vocale.");
     const recognition = new SpeechRecognition();
     recognition.lang = 'it-IT';
     recognition.interimResults = false;
-
-    recognition.onstart = () => {
-      setIsListening(true);
-      setTestoVocale('Ascolto... (es: "Domenica 11 ore 12:30 tavolo 1 per Rossi 5 persone")');
-    };
-    
+    recognition.onstart = () => { setIsListening(true); setTestoVocale('Ascolto...'); };
     recognition.onend = () => setIsListening(false);
-
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript.toLowerCase();
       setTestoVocale(`Hai detto: "${transcript}"`);
       compilaFormDaVoce(transcript);
     };
-
     recognition.start();
   };
 
   const compilaFormDaVoce = (fraseOriginale) => {
     let frase = fraseOriginale.toLowerCase().replace(/\bmezza\b/g, '30');
-
     const numeriTestuali = {
-      'uno': '1', 'un': '1', 'una': '1', 'due': '2', 'tre': '3', 'quattro': '4', 
-      'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9', 'dieci': '10',
-      'undici': '11', 'dodici': '12', 'tredici': '13', 'quattordici': '14', 'quindici': '15',
-      'sedici': '16', 'diciassette': '17', 'diciotto': '18', 'diciannove': '19', 'venti': '20'
+      'uno': '1', 'un': '1', 'una': '1', 'due': '2', 'tre': '3', 'quattro': '4', 'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9', 'dieci': '10', 'undici': '11', 'dodici': '12', 'tredici': '13', 'quattordici': '14', 'quindici': '15', 'sedici': '16', 'diciassette': '17', 'diciotto': '18', 'diciannove': '19', 'venti': '20'
     };
     Object.keys(numeriTestuali).forEach(parola => {
-       const regex = new RegExp(`\\b${parola}\\b`, 'gi');
-       frase = frase.replace(regex, numeriTestuali[parola]);
+       frase = frase.replace(new RegExp(`\\b${parola}\\b`, 'gi'), numeriTestuali[parola]);
     });
 
     let fraseSenzaDati = frase;
-
     let pax = '';
     const matchPersone = fraseSenzaDati.match(/(\d+)\s*person/i);
-    if (matchPersone) {
-      pax = matchPersone[1];
-      fraseSenzaDati = fraseSenzaDati.replace(matchPersone[0], '');
-    }
+    if (matchPersone) { pax = matchPersone[1]; fraseSenzaDati = fraseSenzaDati.replace(matchPersone[0], ''); }
 
     let ora = '';
     const matchOra = fraseSenzaDati.match(/(?:ore|alle|le)\s*(\d{1,2})(?:[\:\s\.]*(?:e\s*)?(\d{2}))?/i);
     if (matchOra) {
       let hh = parseInt(matchOra[1], 10);
       let computedServizio = hh < 16 ? 'pranzo' : 'cena';
-      
-      if (computedServizio === 'pranzo' && hh >= 7 && hh <= 11 && fraseSenzaDati.includes('cena')) {
-          hh += 12; 
-          computedServizio = 'cena';
-      } else if (hh >= 7 && hh <= 11 && computedServizio === 'pranzo') {
-          hh += 12;
-          computedServizio = 'cena';
-      }
-
+      if (computedServizio === 'pranzo' && hh >= 7 && hh <= 11 && fraseSenzaDati.includes('cena')) { hh += 12; computedServizio = 'cena'; } 
+      else if (hh >= 7 && hh <= 11 && computedServizio === 'pranzo') { hh += 12; computedServizio = 'cena'; }
       setServizioVista(computedServizio);
-      
-      const hhStr = String(hh).padStart(2, '0');
-      const mmStr = matchOra[2] ? matchOra[2].padStart(2, '0') : '00';
-      ora = `${hhStr}:${mmStr}`;
+      ora = `${String(hh).padStart(2, '0')}:${matchOra[2] ? matchOra[2].padStart(2, '0') : '00'}`;
       fraseSenzaDati = fraseSenzaDati.replace(matchOra[0], '');
     }
 
     let dateToSet = formatData(new Date().toISOString()); 
     let baseDate = new Date();
-
     let m1 = fraseSenzaDati.match(/(?:(?:luned[iì]|marted[iì]|mercoled[iì]|gioved[iì]|venerd[iì]|sabato|domenica|giorno)\s+)?(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)/i);
     let m2 = !m1 ? fraseSenzaDati.match(/(luned[iì]|marted[iì]|mercoled[iì]|gioved[iì]|venerd[iì]|sabato|domenica|giorno)\s+(\d{1,2})\b/i) : null;
 
-    if (/\bdomani\b/i.test(fraseSenzaDati)) {
-        baseDate.setDate(baseDate.getDate() + 1);
-        dateToSet = formatData(baseDate.toISOString());
-        fraseSenzaDati = fraseSenzaDati.replace(/\bdomani\b/i, '');
-    } else if (/\boggi\b/i.test(fraseSenzaDati)) {
-        dateToSet = formatData(baseDate.toISOString());
-        fraseSenzaDati = fraseSenzaDati.replace(/\boggi\b/i, '');
-    } else if (m1 || m2) {
+    if (/\bdomani\b/i.test(fraseSenzaDati)) { baseDate.setDate(baseDate.getDate() + 1); dateToSet = formatData(baseDate.toISOString()); fraseSenzaDati = fraseSenzaDati.replace(/\bdomani\b/i, ''); } 
+    else if (/\boggi\b/i.test(fraseSenzaDati)) { dateToSet = formatData(baseDate.toISOString()); fraseSenzaDati = fraseSenzaDati.replace(/\boggi\b/i, ''); } 
+    else if (m1 || m2) {
         let dayMatch = m1 ? parseInt(m1[1], 10) : parseInt(m2[2], 10);
         let monthMatchStr = m1 ? m1[2].toLowerCase() : null;
         let matchStrToRemove = m1 ? m1[0] : m2[0];
-        
         let monthMatch = baseDate.getMonth();
-        if (monthMatchStr) {
-            const mesi = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
-            monthMatch = mesi.indexOf(monthMatchStr);
-        }
+        if (monthMatchStr) monthMatch = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'].indexOf(monthMatchStr);
         let targetDate = new Date(baseDate.getFullYear(), monthMatch, dayMatch);
-        let todayNoTime = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
-        
-        if (targetDate < todayNoTime) {
+        if (targetDate < new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate())) {
             if (monthMatchStr) targetDate.setFullYear(targetDate.getFullYear() + 1);
             else targetDate.setMonth(targetDate.getMonth() + 1);
         }
@@ -448,28 +410,16 @@ export default function App() {
     }
     setTavoliSelezionati(foundTableIds);
 
-    let nomePulito = fraseSenzaDati
-      .replace(/\baggiungi\b|\binserisci\b|\bnuova\b|\bprenota\b|\bprenotazione\b|\bal\b|\bil\b|\bper\b/gi, '')
-      .replace(/[.,]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
+    let nomePulito = fraseSenzaDati.replace(/\baggiungi\b|\binserisci\b|\bnuova\b|\bprenota\b|\bprenotazione\b|\bal\b|\bil\b|\bper\b/gi, '').replace(/[.,]/g, '').replace(/\s+/g, ' ').trim();
     const nomeFinale = nomePulito.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1) : '').join(' ');
 
-    if (nomeFinale) setNomeCliente(nomeFinale);
-    else setNomeCliente('');
+    setNomeCliente(nomeFinale || '');
     if (pax) setNumeroPersone(pax);
-    
-    const orariDisponibili = generaOrari();
-    if (ora && orariDisponibili.includes(ora)) setOraEsatta(ora);
-    else if (ora) setOraEsatta(ora); 
-
+    if (ora && generaOrari().includes(ora)) setOraEsatta(ora); else if (ora) setOraEsatta(ora); 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Funzioni Drag-to-Pan (Mouse PC)
   const handleMouseDownMap = (e) => {
-    // Evitiamo il drag della mappa se si sta spostando un tavolo in Edit Mode
     if (isEditMode) return;
     setIsPanning(true);
     setStartPan({ x: e.pageX - mapContainerRef.current.offsetLeft, y: e.pageY - mapContainerRef.current.offsetTop });
@@ -482,27 +432,20 @@ export default function App() {
     e.preventDefault();
     const x = e.pageX - mapContainerRef.current.offsetLeft;
     const y = e.pageY - mapContainerRef.current.offsetTop;
-    const walkX = (x - startPan.x) * 1.5; // Velocità di scorrimento orizzontale
-    const walkY = (y - startPan.y) * 1.5; // Velocità di scorrimento verticale
-    mapContainerRef.current.scrollLeft = scrollPan.left - walkX;
-    mapContainerRef.current.scrollTop = scrollPan.top - walkY;
+    mapContainerRef.current.scrollLeft = scrollPan.left - (x - startPan.x) * 1.5;
+    mapContainerRef.current.scrollTop = scrollPan.top - (y - startPan.y) * 1.5;
   };
 
-  // Funzioni Pinch-To-Zoom (Touch Smartphone)
   const handleTouchStart = (e) => {
     if (e.touches.length === 2) {
-      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      setPinchDist(dist);
+      setPinchDist(Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY));
       setPinchZoom(zoomMappa);
     }
   };
   const handleTouchMove = (e) => {
     if (e.touches.length === 2 && pinchDist) {
-      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      const scale = dist / pinchDist;
-      let newZ = pinchZoom * scale;
-      if (newZ < 0.2) newZ = 0.2;
-      if (newZ > 1.5) newZ = 1.5;
+      let newZ = pinchZoom * (Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY) / pinchDist);
+      if (newZ < 0.2) newZ = 0.2; if (newZ > 1.5) newZ = 1.5;
       setZoomMappa(newZ);
     }
   };
@@ -518,42 +461,34 @@ export default function App() {
     else setTavoloInfo(id);
   };
 
-  const aggiornaPosizioneLocale = (id, x, y) => {
-    setTavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t));
-  };
+  const aggiornaPosizioneLocale = (id, x, y) => { setTavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); };
 
   async function modificaInfoTavolo(t) {
     if (!t || !isAdmin) return;
-    const n = window.prompt("Nome tavolo:", t.numero_tavolo);
-    if (n === null) return;
-    const p = window.prompt("Capacità posti:", t.capacita);
-    if (p === null) return;
+    const n = window.prompt("Nome tavolo:", t.numero_tavolo); if (n === null) return;
+    const p = window.prompt("Capacità posti:", t.capacita); if (p === null) return;
     if (n && p) { await supabase.from('tavoli').update({ numero_tavolo: n, capacita: parseInt(p) }).eq('id', t.id); aggiornaTutto(); }
   }
 
-  const tavoliOrdinati = [...(tuttiITavoli || [])].sort((a, b) => {
-    const numA = parseInt(a.numero_tavolo) || 999;
-    const numB = parseInt(b.numero_tavolo) || 999;
-    return numA - numB;
-  });
+  const tuttiITavoliOrdinati = [...(tuttiITavoli || [])].sort((a, b) => parseInt(a.numero_tavolo) - parseInt(b.numero_tavolo));
 
   if (!isLoggedIn) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f4f6f8' }}>
         <form onSubmit={handleLogin} style={{ background: 'white', padding: '30px', borderRadius: '20px', width: '85%', maxWidth: '350px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }}>
-          <h2 style={{ textAlign: 'center', color: '#1a73e8', marginBottom: '10px' }}>Belvedere 🍷</h2>
+          {/* LOGO SCHERMATA LOGIN */}
+          <img src="/logo.png" alt="Belvedere" style={{ height: '70px', display: 'block', margin: '0 auto 20px auto', objectFit: 'contain' }} />
           <p style={{ textAlign: 'center', color: '#666', marginBottom: '25px', fontSize: '14px' }}>Inserisci la password di accesso</p>
           <input type="password" placeholder="Password..." value={passInput} onChange={e => setPassInput(e.target.value)} style={{ width: '100%', padding: '15px', borderRadius: '12px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
           <div style={{ marginTop: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <input type="checkbox" id="ric" checked={ricordami} onChange={e => setRicordami(e.target.checked)} style={{ width: '20px', height: '20px' }} /> <label htmlFor="ric">Ricordami su questo dispositivo</label>
           </div>
-          <button type="submit" style={{ width: '100%', padding: '15px', background: '#1a73e8', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', marginTop: '20px', cursor: 'pointer' }}>ACCEDI</button>
+          <button type="submit" style={{ width: '100%', padding: '15px', background: '#d4af37', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', marginTop: '20px', cursor: 'pointer', fontSize: '16px' }}>ACCEDI</button>
         </form>
       </div>
     );
   }
 
-  // COMPONENTI SEZIONI PER LAYOUT DINAMICO
   const SezioneForm = (
     <div style={{ background: 'white', padding: '18px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
       <form onSubmit={salvaPrenotazione} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -570,12 +505,15 @@ export default function App() {
         <select value="" onChange={(e) => { 
             const val = e.target.value; 
             const targetTable = tuttiITavoli.find(t => String(t.id) === String(val));
-            if (targetTable && !tavoliSelezionati.includes(targetTable.id)) {
-                setTavoliSelezionati(prev => [...prev, targetTable.id]);
-            }
+            if (targetTable && !tavoliSelezionati.includes(targetTable.id)) setTavoliSelezionati(prev => [...prev, targetTable.id]);
         }} style={{ padding: '14px', borderRadius: '12px', border: '2px solid #e7f1ff', fontSize: '16px', fontWeight: 'bold' }}>
           <option value="">➕ Assegna Tavolo Rapido...</option>
-          {(tavoli || []).map(t => <option key={t.id} value={t.id}>{t.numero_tavolo} - {getPrenotazioniTurno(t.id).length === 0 ? "🟢 Libero" : "🟠 Occupato"}</option>)}
+          {/* MOSTRA TUTTI I TAVOLI CON NOME SALA */}
+          {tuttiITavoliOrdinati.map(t => {
+             const roomName = (sale.find(s => s.id === t.sala_id) || {}).nome || '';
+             const isFree = getPrenotazioniTurno(t.id).length === 0;
+             return <option key={t.id} value={t.id}>Tav. {t.numero_tavolo} ({roomName}) - {isFree ? "🟢 Libero" : "🟠 Occupato"}</option>
+          })}
         </select>
         {tavoliSelezionati.length > 0 && (
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -627,7 +565,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MAPPA CONTAINER CON DRAG (MOUSE) E PINCH (TOUCH) */}
       <div 
         ref={mapContainerRef}
         onMouseDown={handleMouseDownMap}
@@ -637,24 +574,13 @@ export default function App() {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        style={{ 
-          width: '100%', 
-          height: isMobile ? '55vh' : '75vh', 
-          backgroundColor: '#e9ecef', 
-          borderRadius: '16px', 
-          border: '2px solid #dee2e6', 
-          overflow: 'auto', 
-          position: 'relative',
-          cursor: isPanning ? 'grabbing' : (isEditMode ? 'default' : 'grab') 
-        }}
+        style={{ width: '100%', height: isMobile ? '55vh' : '75vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative', cursor: isPanning ? 'grabbing' : (isEditMode ? 'default' : 'grab') }}
       >
         <div style={{ width: '1300px', height: '1300px', position: 'relative', transform: `scale(${parseFloat(zoomMappa) || 0.2})`, transformOrigin: 'top left' }}>
           {(tavoli || []).map(t => {
             const pres = getPrenotazioniTurno(t.id);
             const sel = tavoliSelezionati.includes(t.id);
-            
-            let bgCol = 'white';
-            let bCol = '#adb5bd';
+            let bgCol = 'white'; let bCol = '#adb5bd';
             if (sel) { bgCol = '#cfe2ff'; bCol = '#0d6efd'; } 
             else if (pres.length > 1) { bgCol = '#dc3545'; bCol = '#a71d2a'; } 
             else if (pres.some(p => p.presente)) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
@@ -667,21 +593,8 @@ export default function App() {
                   
                   {isAdmin && isEditMode && (
                     <>
-                      <button 
-                        onMouseDown={(e) => { e.stopPropagation(); }} 
-                        onTouchStart={(e) => { e.stopPropagation(); }} 
-                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); modificaInfoTavolo(t); }} 
-                        style={{ position: 'absolute', top: '-18px', left: '-18px', zIndex: 9999, background: '#f8f9fa', color: '#0d6efd', border: '2px solid #0d6efd', borderRadius: '50%', width: '45px', height: '45px', fontSize: '22px', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        ⚙️
-                      </button>
-                      
-                      <button 
-                        onMouseDown={(e) => { e.stopPropagation(); }} 
-                        onTouchStart={(e) => { e.stopPropagation(); }} 
-                        onClick={async (e) => { e.stopPropagation(); e.preventDefault(); if(window.confirm("Eliminare definitivamente il tavolo?")) { await supabase.from('tavoli').delete().eq('id', t.id); aggiornaTutto(); } }} 
-                        style={{ position: 'absolute', top: '-18px', right: '-18px', zIndex: 9999, background: '#dc3545', color: 'white', border: '2px solid white', borderRadius: '50%', width: '45px', height: '45px', fontSize: '20px', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        ✖
-                      </button>
+                      <button onMouseDown={(e) => { e.stopPropagation(); }} onTouchStart={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); e.preventDefault(); modificaInfoTavolo(t); }} style={{ position: 'absolute', top: '-18px', left: '-18px', zIndex: 9999, background: '#f8f9fa', color: '#0d6efd', border: '2px solid #0d6efd', borderRadius: '50%', width: '45px', height: '45px', fontSize: '22px', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚙️</button>
+                      <button onMouseDown={(e) => { e.stopPropagation(); }} onTouchStart={(e) => { e.stopPropagation(); }} onClick={async (e) => { e.stopPropagation(); e.preventDefault(); if(window.confirm("Eliminare definitivamente il tavolo?")) { await supabase.from('tavoli').delete().eq('id', t.id); aggiornaTutto(); } }} style={{ position: 'absolute', top: '-18px', right: '-18px', zIndex: 9999, background: '#dc3545', color: 'white', border: '2px solid white', borderRadius: '50%', width: '45px', height: '45px', fontSize: '20px', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✖</button>
                     </>
                   )}
 
@@ -712,20 +625,14 @@ export default function App() {
           {risultatiRicerca.map(p => (
             <div key={p.id} style={{ padding: '12px', borderBottom: '1px solid #eee', background: p.presente ? '#e6f4ea' : '#f8f9fa', borderRadius: '10px', marginBottom: '10px' }}>
               <b style={{color: p.presente ? '#28a745' : '#333'}}>{formatDataLeggibile(p.data_ora)}</b> - <b style={{color: p.presente ? '#28a745' : '#333'}}>{p.nome_cliente}</b> ({p.numero_persone}p)
-              
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
                 <button onClick={() => togglePresenza(p.id, p.presente)} style={{ flex: 1, border: p.presente ? '2px solid #28a745' : '1px solid #ddd', background: p.presente ? '#28a745' : '#fff', color: p.presente ? 'white' : '#666', padding: '8px', borderRadius: '8px', fontWeight: 'bold' }}>{p.presente ? '✅ ARRIVATO' : 'ATTESA'}</button>
-                
                 {prenoInSpostamento === p.id ? (
-                  <select onChange={(e) => spostaTavoloRapido(p.id, e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid #fd7e14' }}>
-                    <option value="">Sposta a Tavolo...</option>
-                    {tavoliOrdinati.map(tav => <option key={tav.id} value={tav.id}>Tav. {tav.numero_tavolo} ({(sale || []).find(s => s.id === tav.sala_id)?.nome})</option>)}
-                  </select>
+                  <select onChange={(e) => spostaTavoloRapido(p.id, e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid #fd7e14' }}><option value="">A Tavolo...</option>{tuttiITavoliOrdinati.map(tav => <option key={tav.id} value={tav.id}>Tav. {tav.numero_tavolo} ({(sale.find(s=>s.id===tav.sala_id)||{}).nome})</option>)}</select>
                 ) : (
                   <button onClick={() => setPrenoInSpostamento(p.id)} style={{ flex: 1, background: '#fd7e14', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', fontWeight: 'bold' }}>🔄 SPOSTA</button>
                 )}
-                
-                <button onClick={() => { setEditingId(p.id); setNomeCliente(p.nome_cliente); setNumeroPersone(p.numero_persone); setDataVista(formatData(p.data_ora)); setServizioVista(getServizioDaOra(p.data_ora)); setOraEsatta(formatOra(p.data_ora)); setNote(p.note || ''); setTavoliSelezionati(p.tavoli_assegnati || []); setRicerca(''); window.scrollTo(0,0); }} style={{ flex: 1, border: 'none', background: '#1a73e8', color: 'white', padding: '8px', borderRadius: '8px', fontWeight: 'bold' }}>✏️ MODIFICA</button>
+                <button onClick={() => { setEditingId(p.id); setNomeCliente(p.nome_cliente); setNumeroPersone(p.numero_persone); setDataVista(formatData(p.data_ora)); setServizioVista(getServizioDaOra(p.data_ora)); setOraEsatta(formatOra(p.data_ora)); setNote(p.note || ''); setTavoliSelezionati(p.tavoli_assegnati || []); setRicerca(''); window.scrollTo(0,0); }} style={{ flex: 1, border: 'none', background: '#1a73e8', color: 'white', padding: '8px', borderRadius: '8px', fontWeight: 'bold' }}>✏️ MOD</button>
                 {isAdmin && (
                   <button onClick={async () => { if(window.confirm("Eliminare?")) { await supabase.from('prenotazioni').delete().eq('id', p.id); aggiornaTutto(); } }} style={{ border: 'none', background: '#fff0f0', color: '#dc3545', padding: '8px', borderRadius: '8px', fontWeight: 'bold' }}>🗑️</button>
                 )}
@@ -754,10 +661,7 @@ export default function App() {
                       <button onClick={() => togglePresenza(p.id, p.presente)} style={{ border: 'none', background: p.presente ? '#28a745' : '#e9ecef', color: p.presente ? 'white' : '#666', padding: '8px', borderRadius: '8px', fontWeight: 'bold' }}>{p.presente ? '✅' : '⏳'}</button>
                       
                       {prenoInSpostamento === p.id ? (
-                        <select onChange={(e) => spostaTavoloRapido(p.id, e.target.value)} style={{ padding: '5px', borderRadius: '8px', border: '2px solid #fd7e14', fontSize: '12px', maxWidth: '100px' }}>
-                          <option value="">A Tav...</option>
-                          {tavoliOrdinati.map(tav => <option key={tav.id} value={tav.id}>T.{tav.numero_tavolo}</option>)}
-                        </select>
+                        <select onChange={(e) => spostaTavoloRapido(p.id, e.target.value)} style={{ padding: '5px', borderRadius: '8px', border: '2px solid #fd7e14', fontSize: '12px', maxWidth: '100px' }}><option value="">A Tav...</option>{tuttiITavoliOrdinati.map(tav => <option key={tav.id} value={tav.id}>T.{tav.numero_tavolo}</option>)}</select>
                       ) : (
                         <button onClick={() => setPrenoInSpostamento(p.id)} style={{ border: 'none', background: '#fd7e14', color: 'white', padding: '8px', borderRadius: '8px', fontSize: '16px' }}>🔄</button>
                       )}
@@ -785,28 +689,18 @@ export default function App() {
       {/* HEADER GLOBALE */}
       <div style={{ background: 'white', padding: '15px', borderRadius: '16px', marginBottom: '15px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-          <b style={{ fontSize: '20px' }}>Belvedere 🍷</b>
+          {/* LOGO IN ALTO A SINISTRA */}
+          <img src="/logo.png" alt="Belvedere" style={{ height: '35px', objectFit: 'contain' }} />
+
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-             
-             <button onClick={() => setShowDisponibilita(true)} style={{ background: '#17a2b8', color: 'white', padding: '8px 16px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '13px', boxShadow: '0 2px 5px rgba(23,162,184,0.3)', cursor: 'pointer' }}>
-                📊 Disponibilità
-             </button>
-
-             <button onClick={ascoltaComando} style={{ background: isListening ? '#dc3545' : '#6f42c1', color: 'white', padding: '8px 16px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '13px', boxShadow: isListening ? '0 0 10px #dc3545' : 'none', cursor: 'pointer' }}>
-                {isListening ? '🎙️ In ascolto...' : '🎤 Compila a Voce'}
-             </button>
-
-             <button onClick={scaricaAgendaFile} style={{ background: '#e7f1ff', color: '#0d6efd', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>📥 AGENDA</button>
-             <button onClick={aggiornaTutto} style={{ background: '#e6f4ea', color: '#28a745', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>🔄 Aggiorna</button>
+             <button onClick={() => setShowDisponibilita(true)} style={{ background: '#17a2b8', color: 'white', padding: '8px 16px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '13px', boxShadow: '0 2px 5px rgba(23,162,184,0.3)', cursor: 'pointer' }}>📊 Disponibilità</button>
+             <button onClick={ascoltaComando} style={{ background: isListening ? '#dc3545' : '#6f42c1', color: 'white', padding: '8px 16px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '13px', boxShadow: isListening ? '0 0 10px #dc3545' : 'none', cursor: 'pointer' }}>{isListening ? '🎙️ In ascolto...' : '🎤 Compila a Voce'}</button>
+             {isAdmin && <button onClick={scaricaAgendaFile} style={{ background: '#e7f1ff', color: '#0d6efd', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>📥 AGENDA</button>}
              <button onClick={() => { setIsLoggedIn(false); localStorage.removeItem('belvedere_logged_in'); localStorage.removeItem('belvedere_user_role'); }} style={{ background: '#f8f9fa', color: '#dc3545', padding: '8px 12px', borderRadius: '10px', border: '1px solid #ddd', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>Esci</button>
           </div>
         </div>
         
-        {testoVocale && (
-          <div style={{ padding: '10px', backgroundColor: '#f3f0ff', color: '#6f42c1', borderRadius: '8px', marginBottom: '10px', fontSize: '14px', fontStyle: 'italic' }}>
-            🗣️ {testoVocale}
-          </div>
-        )}
+        {testoVocale && <div style={{ padding: '10px', backgroundColor: '#f3f0ff', color: '#6f42c1', borderRadius: '8px', marginBottom: '10px', fontSize: '14px', fontStyle: 'italic' }}>🗣️ {testoVocale}</div>}
 
         <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', alignItems: 'center' }}>
           <input type="date" value={dataVista} onChange={e => setDataVista(e.target.value)} style={{ padding: '10px', borderRadius: '10px', border: '1px solid #ddd', fontSize: '14px' }} />
@@ -817,30 +711,20 @@ export default function App() {
         </div>
       </div>
 
-      {/* STRUTTURA RESPONSIVE: PC (2 Colonne) vs MOBILE (1 Colonna con ordine specifico) */}
       {isMobile ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          {SezioneForm}
-          {SezioneMappa}
-          {SezioneAgenda}
-        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>{SezioneForm}{SezioneMappa}{SezioneAgenda}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'row', gap: '20px' }}>
-          <div style={{ flex: '0 0 32%', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {SezioneForm}
-            {SezioneAgenda}
-          </div>
-          <div style={{ flex: '0 0 65%', display: 'flex', flexDirection: 'column', gap: '15px', position: 'sticky', top: '15px', height: 'fit-content' }}>
-            {SezioneMappa}
-          </div>
+          <div style={{ flex: '0 0 32%', display: 'flex', flexDirection: 'column', gap: '15px' }}>{SezioneForm}{SezioneAgenda}</div>
+          <div style={{ flex: '0 0 65%', display: 'flex', flexDirection: 'column', gap: '15px', position: 'sticky', top: '15px', height: 'fit-content' }}>{SezioneMappa}</div>
         </div>
       )}
 
-      {/* POP-UP TAVOLO MULTIPLO MAPPA */}
+      {/* POP-UP TAVOLO DETTAGLIO */}
       {tavoloInfo && (() => {
         const presSulTavolo = getPrenotazioniTurno(tavoloInfo);
         return (
-          <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 3000, display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => { setTavoloInfo(null); setPrenoInSpostamento(null); }}>
+          <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 5000, display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => { setTavoloInfo(null); setPrenoInSpostamento(null); }}>
             <div style={{ background: 'white', padding: '25px', borderRadius: '20px', width: '90%', maxWidth: '380px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
               <h2 style={{ marginTop: 0, fontSize: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>Tavolo {(tuttiITavoli || []).find(x => x.id === tavoloInfo)?.numero_tavolo}</h2>
               
@@ -854,10 +738,7 @@ export default function App() {
                         <button onClick={() => togglePresenza(p.id, p.presente)} style={{ flex: 1, background: p.presente ? '#28a745' : '#fff', color: p.presente ? 'white' : '#666', padding: '8px', borderRadius: '8px', fontWeight: 'bold', border: '1px solid #ddd', cursor: 'pointer' }}>{p.presente ? '✅' : 'ATTESA'}</button>
                         
                         {prenoInSpostamento === p.id ? (
-                          <select onChange={(e) => spostaTavoloRapido(p.id, e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid #fd7e14' }}>
-                            <option value="">A Tavolo...</option>
-                            {tavoliOrdinati.map(tav => <option key={tav.id} value={tav.id}>Tav. {tav.numero_tavolo}</option>)}
-                          </select>
+                          <select onChange={(e) => spostaTavoloRapido(p.id, e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid #fd7e14' }}><option value="">A Tavolo...</option>{tuttiITavoliOrdinati.map(tav => <option key={tav.id} value={tav.id}>T. {tav.numero_tavolo} ({(sale.find(s=>s.id===tav.sala_id)||{}).nome})</option>)}</select>
                         ) : (
                           <button onClick={() => setPrenoInSpostamento(p.id)} style={{ flex: 1, background: '#fd7e14', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>🔄 SPOSTA</button>
                         )}
@@ -881,13 +762,14 @@ export default function App() {
         );
       })()}
 
-      {/* POP-UP DISPONIBILITÀ GLOBALE (GRIGLIA) */}
+      {/* POP-UP DISPONIBILITÀ GLOBALE (GRIGLIA SCROLLABILE CON CLICK SUL TAVOLO) */}
       {showDisponibilita && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', zIndex: 4000, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }} onClick={() => setShowDisponibilita(false)}>
-          <div style={{ background: 'white', padding: '25px', borderRadius: '20px', maxWidth: '1000px', margin: '0 auto', minHeight: '80vh' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', zIndex: 4000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box' }} onClick={() => setShowDisponibilita(false)}>
+          <div style={{ background: 'white', padding: '25px', borderRadius: '20px', width: '100%', maxWidth: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            
+            {/* Header Fisso */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '15px', flexShrink: 0, flexWrap: 'wrap', gap: '10px' }}>
                <h2 style={{ margin: 0, color: '#1a73e8' }}>📊 Disponibilità</h2>
-               
                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <input type="date" value={dataVista} onChange={e => setDataVista(e.target.value)} style={{ padding: '8px', borderRadius: '10px', border: '1px solid #ccc', fontSize: '14px' }} />
                   <div style={{ background: '#f1f3f5', borderRadius: '10px', padding: '4px', display: 'flex', gap: '4px' }}>
@@ -895,55 +777,59 @@ export default function App() {
                     <button onClick={() => setServizioVista('cena')} style={{ padding: '6px 12px', border: 'none', borderRadius: '8px', background: servizioVista === 'cena' ? 'white' : 'transparent', color: servizioVista === 'cena' ? '#1a73e8' : '#555', fontSize: '13px', fontWeight: 'bold', boxShadow: servizioVista === 'cena' ? '0 2px 5px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer' }}>CENA</button>
                   </div>
                </div>
-
                <button onClick={() => setShowDisponibilita(false)} style={{ background: '#dc3545', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}>CHIUDI ✖</button>
             </div>
             
-            {(sale || []).map(s => {
-               const tavoliSala = (tuttiITavoli || []).filter(t => t.sala_id === s.id).sort((a,b) => parseInt(a.numero_tavolo) - parseInt(b.numero_tavolo));
-               if (tavoliSala.length === 0) return null;
-               
-               return (
-                 <div key={s.id} style={{ marginBottom: '35px' }}>
-                   <h3 style={{ background: '#f8f9fa', padding: '12px', borderRadius: '12px', borderLeft: '5px solid #1a73e8', marginTop: 0 }}>{s.nome.toUpperCase()}</h3>
-                   
-                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(105px, 1fr))', gap: '10px' }}>
-                     {tavoliSala.map(t => {
-                       const pres = getPrenotazioniTurno(t.id);
-                       const isFree = pres.length === 0;
-                       const isDouble = pres.length > 1;
-                       
-                       let bgC = '#f0fdf4';
-                       let borderC = '#28a745';
-                       if (isDouble) { bgC = '#f8d7da'; borderC = '#dc3545'; } 
-                       else if (!isFree) { bgC = '#fff8e1'; borderC = '#fd7e14'; } 
+            {/* Corpo Scrollabile */}
+            <div style={{ overflowY: 'auto', flexGrow: 1, paddingRight: '10px' }}>
+              {(sale || []).map(s => {
+                 const tavoliSala = tuttiITavoliOrdinati.filter(t => t.sala_id === s.id);
+                 if (tavoliSala.length === 0) return null;
+                 
+                 return (
+                   <div key={s.id} style={{ marginBottom: '35px' }}>
+                     <h3 style={{ background: '#f8f9fa', padding: '12px', borderRadius: '12px', borderLeft: '5px solid #1a73e8', marginTop: 0 }}>{s.nome.toUpperCase()}</h3>
+                     
+                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(105px, 1fr))', gap: '10px' }}>
+                       {tavoliSala.map(t => {
+                         const pres = getPrenotazioniTurno(t.id);
+                         const isFree = pres.length === 0;
+                         const isDouble = pres.length > 1;
+                         
+                         let bgC = '#f0fdf4'; let borderC = '#28a745';
+                         if (isDouble) { bgC = '#f8d7da'; borderC = '#dc3545'; } 
+                         else if (!isFree) { bgC = '#fff8e1'; borderC = '#fd7e14'; } 
 
-                       return (
-                         <div key={t.id} style={{ padding: '10px 5px', borderRadius: '10px', border: `2px solid ${borderC}`, background: bgC, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
-                           <strong style={{ fontSize: '15px', color: isDouble ? '#dc3545' : '#333' }}>Tav. {t.numero_tavolo}</strong>
-                           <div style={{ fontSize: '11px', marginTop: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                             {isFree ? (
-                               <span style={{ color: '#28a745', fontWeight: 'bold' }}>🟢 LIBERO</span>
-                             ) : (
-                               pres.map(p => (
-                                 <div key={p.id} style={{ color: isDouble ? 'white' : '#d35400', fontWeight: 'bold', background: isDouble ? '#dc3545' : '#ffe8cc', padding: '3px', borderRadius: '4px', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                   {formatOra(p.data_ora)} {p.nome_cliente} ({p.numero_persone})
-                                 </div>
-                               ))
-                             )}
+                         return (
+                           <div 
+                             key={t.id} 
+                             onClick={() => { setTavoloInfo(t.id); setShowDisponibilita(false); }} 
+                             style={{ padding: '10px 5px', borderRadius: '10px', border: `2px solid ${borderC}`, background: bgC, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.1s', ':hover': { transform: 'scale(1.05)' } }}
+                           >
+                             <strong style={{ fontSize: '15px', color: isDouble ? '#dc3545' : '#333' }}>Tav. {t.numero_tavolo}</strong>
+                             <div style={{ fontSize: '11px', marginTop: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                               {isFree ? (
+                                 <span style={{ color: '#28a745', fontWeight: 'bold' }}>🟢 LIBERO</span>
+                               ) : (
+                                 pres.map(p => (
+                                   <div key={p.id} style={{ color: isDouble ? 'white' : '#d35400', fontWeight: 'bold', background: isDouble ? '#dc3545' : '#ffe8cc', padding: '3px', borderRadius: '4px', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                     {formatOra(p.data_ora)} {p.nome_cliente} ({p.numero_persone})
+                                   </div>
+                                 ))
+                               )}
+                             </div>
                            </div>
-                         </div>
-                       )
-                     })}
+                         )
+                       })}
+                     </div>
                    </div>
-                 </div>
-               )
-            })}
+                 )
+              })}
+            </div>
           </div>
         </div>
       )}
 
-      {/* PULSANTONE FLUTTUANTE SOLO SU MOBILE */}
       {isMobile && nomeCliente && oraEsatta && tavoliSelezionati.length > 0 && !isEditMode && (
         <button onClick={salvaPrenotazione} style={{ position: 'fixed', bottom: '25px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000, background: '#28a745', color: 'white', padding: '18px 0', borderRadius: '50px', border: 'none', fontWeight: 'bold', fontSize: '18px', width: '90%', boxShadow: '0 8px 25px rgba(40, 167, 69, 0.4)', cursor: 'pointer' }}>💾 CONFERMA PRENOTAZIONE</button>
       )}
