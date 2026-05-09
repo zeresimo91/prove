@@ -290,7 +290,7 @@ export default function App() {
   const resetForm = () => { setEditingId(null); setNomeCliente(''); setNumeroPersone(''); setOraEsatta(''); setNote(''); setTavoliSelezionati([]); };
 
   // ==========================================
-  // FUNZIONI ASSISTENTE VOCALE
+  // FUNZIONI ASSISTENTE VOCALE (COMPILATORE FORM)
   // ==========================================
   const ascoltaComando = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -305,60 +305,71 @@ export default function App() {
 
     recognition.onstart = () => {
       setIsListening(true);
-      setTestoVocale('Ascolto in corso...');
+      setTestoVocale('Ascolto... (es: "Prenotazione per Smith, 4 persone alle ore 20")');
     };
     
     recognition.onend = () => setIsListening(false);
 
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript.toLowerCase();
-      setTestoVocale(transcript);
-      analizzaComandoRigido(transcript);
+      setTestoVocale(`Hai detto: "${transcript}"`);
+      compilaFormDaVoce(transcript);
     };
 
     recognition.start();
   };
 
-  const analizzaComandoRigido = async (frase) => {
-    const matchPersone = frase.match(/(\d+)\s*person/);
-    const matchTavolo = frase.match(/tavolo\s*(\d+)/);
-    const matchOra = frase.match(/(?:ore|alle)\s*(\d{1,2})(?:[\:\s\.]*(?:e\s*)?(\d{2}))?/);
+  const compilaFormDaVoce = (fraseOriginale) => {
+    // Sostituiamo la parola "mezza" con "30" per facilitare la comprensione dell'ora
+    let frase = fraseOriginale.replace(/mezza/g, '30');
 
-    if (matchPersone && matchTavolo && matchOra) {
-      const pax = parseInt(matchPersone[1]);
-      const numTavolo = matchTavolo[1];
+    // 1. Estrai le Persone (cerca numero prima di "person")
+    let pax = '';
+    const matchPersone = frase.match(/(\d+)\s*person/i);
+    if (matchPersone) pax = matchPersone[1];
+
+    // 2. Estrai l'Ora (cerca "ore" o "alle" seguito da numeri)
+    let ora = '';
+    const matchOra = frase.match(/(?:ore|alle)\s*(\d{1,2})(?:[\:\s\.]*(?:e\s*)?(\d{2}))?/i);
+    if (matchOra) {
       const hh = matchOra[1].padStart(2, '0');
       const mm = matchOra[2] ? matchOra[2].padStart(2, '0') : '00';
-      const oraFormattata = `${hh}:${mm}`;
-
-      const tavoloDestinazione = tuttiITavoli.find(t => String(t.numero_tavolo) === String(numTavolo));
-
-      if (!tavoloDestinazione) {
-        alert(`❌ Non ho trovato il tavolo ${numTavolo} nel database.`);
-        return;
-      }
-
-      const dataOraIso = new Date(`${dataVista}T${oraFormattata}`).toISOString();
-      const payload = {
-        nome_cliente: '🎤 Vocale',
-        numero_persone: pax,
-        data_ora: dataOraIso,
-        tavoli_assegnati: [tavoloDestinazione.id],
-        note: `Comando originale: "${frase}"`,
-        presente: false
-      };
-
-      const { error } = await supabase.from('prenotazioni').insert([payload]);
-      
-      if (!error) {
-         alert(`✅ INSERITO: ${pax} pax alle ${oraFormattata} al Tavolo ${numTavolo}`);
-         aggiornaTutto();
-      } else {
-         alert("❌ Errore nel salvataggio su Supabase.");
-      }
-    } else {
-      alert(`🤔 Non ho capito il comando.\nHai detto: "${frase}".\nUsa: "Aggiungi 5 persone alle ore 20 e 30 al tavolo 26"`);
+      ora = `${hh}:${mm}`;
     }
+
+    // 3. Estrai il Nome (cerca tutto ciò che c'è dopo "per" e prima di numeri/ore)
+    let nome = '';
+    const matchNome = frase.match(/per\s+(.+?)(?=\s+\d+\s*person|\s+ore|\s+alle|$)/i);
+    
+    if (matchNome && matchNome[1]) {
+      nome = matchNome[1].trim();
+    } else {
+      // Piano B: Se non usa la parola "per", puliamo la frase rimuovendo i comandi
+      nome = frase
+        .replace(/aggiungi|prenota|prenotazione|tavolo|un|una/gi, '')
+        .replace(new RegExp(`${pax}\\s*persone?`, 'gi'), '')
+        .replace(/(?:ore|alle)\s*\d{1,2}(?:[\:\s\.]*(?:e\s*)?\d{2}?)?/gi, '')
+        .trim();
+    }
+
+    // Mettiamo l'iniziale maiuscola al nome per eleganza (es: "john smith" -> "John Smith")
+    nome = nome.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1) : '').join(' ');
+
+    // 4. INSERIAMO I DATI NEL FORM
+    if (nome) setNomeCliente(nome);
+    if (pax) setNumeroPersone(pax);
+    
+    // Controlliamo che l'ora esista nel menu a tendina
+    const orariDisponibili = generaOrari();
+    if (ora && orariDisponibili.includes(ora)) {
+        setOraEsatta(ora);
+    } else if (ora) {
+        // Se ha capito un orario strano, lo mettiamo comunque nel campo testuale
+        setOraEsatta(ora); 
+    }
+
+    // Ti riporta automaticamente in cima alla pagina dove c'è il form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const prenotazioniDelServizio = (prenotazioni || []).filter(p => formatData(p.data_ora) === dataVista && getServizioDaOra(p.data_ora) === servizioVista);
@@ -430,7 +441,7 @@ export default function App() {
                   boxShadow: isListening ? '0 0 10px #dc3545' : 'none'
                 }}
              >
-                {isListening ? '🎙️ In ascolto...' : '🎤 Aggiungi a Voce'}
+                {isListening ? '🎙️ In ascolto...' : '🎤 Compila a Voce'}
              </button>
 
              <button onClick={scaricaAgendaFile} style={{ background: '#e7f1ff', color: '#0d6efd', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px' }}>📥 SCARICA AGENDA</button>
@@ -442,7 +453,7 @@ export default function App() {
         {/* Mostra il testo capito dal microfono */}
         {testoVocale && (
           <div style={{ padding: '10px', backgroundColor: '#f3f0ff', color: '#6f42c1', borderRadius: '8px', marginBottom: '10px', fontSize: '14px', fontStyle: 'italic' }}>
-            🗣️ "{testoVocale}"
+            🗣️ {testoVocale}
           </div>
         )}
 
