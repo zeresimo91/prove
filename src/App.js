@@ -436,7 +436,6 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Funzioni PINCH-TO-ZOOM per Mappa su Mobile
   const handleTouchStart = (e) => {
     if (e.touches.length === 2) {
       const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
@@ -504,7 +503,6 @@ export default function App() {
     );
   }
 
-  // COMPONENTI SEZIONI PER LAYOUT DINAMICO
   const SezioneForm = (
     <div style={{ background: 'white', padding: '18px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
       <form onSubmit={salvaPrenotazione} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -552,7 +550,6 @@ export default function App() {
           </select>
         </div>
         
-        {/* BARRA ZOOM: Nascondila se siamo su mobile, mostra scritta d'aiuto */}
         {isMobile ? (
           <div style={{ fontSize: '12px', color: '#666', fontStyle: 'italic', width: '100%', textAlign: 'center' }}>
             (Usa due dita sulla mappa per fare Zoom)
@@ -577,7 +574,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MAPPA CONTAINER CON GESTIONE PINCH TO ZOOM */}
       <div 
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -591,10 +587,10 @@ export default function App() {
             
             let bgCol = 'white';
             let bCol = '#adb5bd';
-            if (sel) { bgCol = '#cfe2ff'; bCol = '#0d6efd'; } // Selezionato (Azzurro)
-            else if (pres.length > 1) { bgCol = '#dc3545'; bCol = '#a71d2a'; } // Doppio Turno (ROSSO)
-            else if (pres.some(p => p.presente)) { bgCol = '#d1e7dd'; bCol = '#28a745'; } // Presente (Verde)
-            else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } // Occupato (Arancione)
+            if (sel) { bgCol = '#cfe2ff'; bCol = '#0d6efd'; } 
+            else if (pres.length > 1) { bgCol = '#dc3545'; bCol = '#a71d2a'; } 
+            else if (pres.some(p => p.presente)) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
+            else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
 
             return (
               <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa) || 0.2} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)} bounds="parent">
@@ -749,7 +745,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* STRUTTURA RESPONSIVE: PC (2 Colonne) vs MOBILE (1 Colonna) */}
+      {/* STRUTTURA RESPONSIVE: PC (2 Colonne) vs MOBILE (1 Colonna con ordine specifico) */}
       {isMobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           {SezioneForm}
@@ -837,7 +833,6 @@ export default function App() {
                  <div key={s.id} style={{ marginBottom: '35px' }}>
                    <h3 style={{ background: '#f8f9fa', padding: '12px', borderRadius: '12px', borderLeft: '5px solid #1a73e8', marginTop: 0 }}>{s.nome.toUpperCase()}</h3>
                    
-                   {/* Layout a griglia densa */}
                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(105px, 1fr))', gap: '10px' }}>
                      {tavoliSala.map(t => {
                        const pres = getPrenotazioniTurno(t.id);
@@ -846,8 +841,8 @@ export default function App() {
                        
                        let bgC = '#f0fdf4';
                        let borderC = '#28a745';
-                       if (isDouble) { bgC = '#f8d7da'; borderC = '#dc3545'; } // ROSSO
-                       else if (!isFree) { bgC = '#fff8e1'; borderC = '#fd7e14'; } // ARANCIONE
+                       if (isDouble) { bgC = '#f8d7da'; borderC = '#dc3545'; } 
+                       else if (!isFree) { bgC = '#fff8e1'; borderC = '#fd7e14'; } 
 
                        return (
                          <div key={t.id} style={{ padding: '10px 5px', borderRadius: '10px', border: `2px solid ${borderC}`, background: bgC, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
