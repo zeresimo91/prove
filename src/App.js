@@ -300,7 +300,7 @@ export default function App() {
   const resetForm = () => { setEditingId(null); setNomeCliente(''); setNumeroPersone(''); setOraEsatta(''); setNote(''); setTavoliSelezionati([]); };
 
   // ==========================================
-  // FUNZIONI ASSISTENTE VOCALE
+  // FUNZIONI ASSISTENTE VOCALE AVANZATO
   // ==========================================
   const ascoltaComando = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -315,7 +315,7 @@ export default function App() {
 
     recognition.onstart = () => {
       setIsListening(true);
-      setTestoVocale('Ascolto... (es: "Prenotazione per Smith, 4 persone alle ore 20")');
+      setTestoVocale('Ascolto... (es: "Domenica 11 ore 12:30 tavolo 1 per Rossi 5 persone")');
     };
     
     recognition.onend = () => setIsListening(false);
@@ -332,60 +332,119 @@ export default function App() {
   const compilaFormDaVoce = (fraseOriginale) => {
     let frase = fraseOriginale.toLowerCase().replace(/\bmezza\b/g, '30');
 
+    // 1. Traduzione Numeri
     const numeriTestuali = {
       'uno': '1', 'un': '1', 'una': '1', 'due': '2', 'tre': '3', 'quattro': '4', 
       'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9', 'dieci': '10',
       'undici': '11', 'dodici': '12', 'tredici': '13', 'quattordici': '14', 'quindici': '15',
       'sedici': '16', 'diciassette': '17', 'diciotto': '18', 'diciannove': '19', 'venti': '20'
     };
-
     Object.keys(numeriTestuali).forEach(parola => {
        const regex = new RegExp(`\\b${parola}\\b`, 'gi');
        frase = frase.replace(regex, numeriTestuali[parola]);
     });
 
-    let pax = '';
-    const matchPersone = frase.match(/(\d+)\s*person/i);
-    if (matchPersone) pax = matchPersone[1];
+    let fraseSenzaDati = frase;
 
+    // 2. Estrai Persone
+    let pax = '';
+    const matchPersone = fraseSenzaDati.match(/(\d+)\s*person/i);
+    if (matchPersone) {
+      pax = matchPersone[1];
+      fraseSenzaDati = fraseSenzaDati.replace(matchPersone[0], '');
+    }
+
+    // 3. Estrai Ora e imposta Pranzo/Cena
     let ora = '';
-    const matchOra = frase.match(/(?:ore|alle|le)\s*(\d{1,2})(?:[\:\s\.]*(?:e\s*)?(\d{2}))?/i);
+    const matchOra = fraseSenzaDati.match(/(?:ore|alle|le)\s*(\d{1,2})(?:[\:\s\.]*(?:e\s*)?(\d{2}))?/i);
     if (matchOra) {
       let hh = parseInt(matchOra[1], 10);
-      if (servizioVista === 'cena' && hh >= 7 && hh <= 11) {
+      
+      // Auto-switch Pranzo o Cena
+      let computedServizio = hh < 16 ? 'pranzo' : 'cena';
+      
+      // Se è palesemente cena ma dicono "alle 8", correggiamo in 20:00
+      if (computedServizio === 'pranzo' && hh >= 7 && hh <= 11 && fraseSenzaDati.includes('cena')) {
           hh += 12; 
+          computedServizio = 'cena';
+      } else if (hh >= 7 && hh <= 11 && computedServizio === 'pranzo') {
+          // Se dicono 8 senza specificare, per un ristorante si assume quasi sempre la sera se non è specificato
+          hh += 12;
+          computedServizio = 'cena';
       }
+
+      setServizioVista(computedServizio); // Switch automatico!
+      
       const hhStr = String(hh).padStart(2, '0');
       const mmStr = matchOra[2] ? matchOra[2].padStart(2, '0') : '00';
       ora = `${hhStr}:${mmStr}`;
+      fraseSenzaDati = fraseSenzaDati.replace(matchOra[0], '');
     }
 
-    let fraseSenzaDati = frase;
-    if (matchPersone) fraseSenzaDati = fraseSenzaDati.replace(matchPersone[0], '');
-    if (matchOra) fraseSenzaDati = fraseSenzaDati.replace(matchOra[0], '');
-    
-    const matchTavolo = fraseSenzaDati.match(/tavolo\s*(\d+)/i);
+    // 4. Estrai Data (oggi, domani, o numero giorno)
+    let dateToSet = formatData(new Date().toISOString()); // Default Oggi
+    let baseDate = new Date();
+
+    let m1 = fraseSenzaDati.match(/(?:(?:luned[iì]|marted[iì]|mercoled[iì]|gioved[iì]|venerd[iì]|sabato|domenica|giorno)\s+)?(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)/i);
+    let m2 = !m1 ? fraseSenzaDati.match(/(luned[iì]|marted[iì]|mercoled[iì]|gioved[iì]|venerd[iì]|sabato|domenica|giorno)\s+(\d{1,2})\b/i) : null;
+
+    if (/\bdomani\b/i.test(fraseSenzaDati)) {
+        baseDate.setDate(baseDate.getDate() + 1);
+        dateToSet = formatData(baseDate.toISOString());
+        fraseSenzaDati = fraseSenzaDati.replace(/\bdomani\b/i, '');
+    } else if (/\boggi\b/i.test(fraseSenzaDati)) {
+        dateToSet = formatData(baseDate.toISOString());
+        fraseSenzaDati = fraseSenzaDati.replace(/\boggi\b/i, '');
+    } else if (m1 || m2) {
+        let dayMatch = m1 ? parseInt(m1[1], 10) : parseInt(m2[2], 10);
+        let monthMatchStr = m1 ? m1[2].toLowerCase() : null;
+        let matchStrToRemove = m1 ? m1[0] : m2[0];
+        
+        let monthMatch = baseDate.getMonth();
+        if (monthMatchStr) {
+            const mesi = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+            monthMatch = mesi.indexOf(monthMatchStr);
+        }
+        let targetDate = new Date(baseDate.getFullYear(), monthMatch, dayMatch);
+        let todayNoTime = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+        
+        // Se la data è passata rispetto a oggi, si assume il mese o l'anno prossimo
+        if (targetDate < todayNoTime) {
+            if (monthMatchStr) targetDate.setFullYear(targetDate.getFullYear() + 1);
+            else targetDate.setMonth(targetDate.getMonth() + 1);
+        }
+        dateToSet = formatData(targetDate.toISOString());
+        fraseSenzaDati = fraseSenzaDati.replace(matchStrToRemove, '');
+    }
+    setDataVista(dateToSet); // Imposta la data trovata (o oggi)
+
+    // 5. Estrai Tavolo
+    let foundTableIds = [];
+    const matchTavolo = fraseSenzaDati.match(/tavolo\s*([\d\.]+)/i);
     if (matchTavolo) {
+       const targetTable = tuttiITavoli.find(t => String(t.numero_tavolo) === String(matchTavolo[1]));
+       if (targetTable) foundTableIds.push(targetTable.id);
        fraseSenzaDati = fraseSenzaDati.replace(matchTavolo[0], '');
     }
+    setTavoliSelezionati(foundTableIds);
 
+    // 6. Estrai e Pulisci il Nome
     let nomePulito = fraseSenzaDati
-      .replace(/\baggiungi\b|\binserisci\b|\bnuova\b|\bprenota\b|\bprenotazione\b|\bal\b|\bil\b|\btavolo\b|\b1\b|\bper\b/gi, '')
+      .replace(/\baggiungi\b|\binserisci\b|\bnuova\b|\bprenota\b|\bprenotazione\b|\bal\b|\bil\b|\bper\b/gi, '')
       .replace(/[.,]/g, '')
       .replace(/\s+/g, ' ')
       .trim();
 
     const nomeFinale = nomePulito.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1) : '').join(' ');
 
+    // 7. COMPILA IL FORM
     if (nomeFinale) setNomeCliente(nomeFinale);
+    else setNomeCliente('');
     if (pax) setNumeroPersone(pax);
     
     const orariDisponibili = generaOrari();
-    if (ora && orariDisponibili.includes(ora)) {
-        setOraEsatta(ora);
-    } else if (ora) {
-        setOraEsatta(ora); 
-    }
+    if (ora && orariDisponibili.includes(ora)) setOraEsatta(ora);
+    else if (ora) setOraEsatta(ora); 
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -495,13 +554,12 @@ export default function App() {
           </div>
           <textarea placeholder="Note o cellulare..." value={note} onChange={e => setNote(e.target.value)} style={{ padding: '14px', borderRadius: '12px', border: '1px solid #ced4da', minHeight: '60px', fontSize: '15px' }} />
           
-          <select onChange={(e) => { 
+          <select value="" onChange={(e) => { 
               const val = e.target.value; 
               const targetTable = tuttiITavoli.find(t => String(t.id) === String(val));
               if (targetTable && !tavoliSelezionati.includes(targetTable.id)) {
                   setTavoliSelezionati(prev => [...prev, targetTable.id]);
               }
-              e.target.value = ""; 
           }} style={{ padding: '14px', borderRadius: '12px', border: '2px solid #e7f1ff', fontSize: '16px', fontWeight: 'bold' }}>
             <option value="">➕ Assegna Tavolo Rapido...</option>
             {(tavoli || []).map(t => <option key={t.id} value={t.id}>{t.numero_tavolo} - {getPrenotazioniTurno(t.id).length === 0 ? "🟢 Libero" : "🟠 Occupato"}</option>)}
@@ -540,18 +598,26 @@ export default function App() {
         </div>
       )}
 
-      {/* MAPPA INTERATTIVA INGRANDITA */}
+      {/* MAPPA INTERATTIVA INGRANDITA CON ROSSO PER DOPPI TURNI */}
       <div style={{ width: '100%', height: '60vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'hidden', position: 'relative' }}>
         <div style={{ width: '1300px', height: '1300px', position: 'relative', transform: `scale(${parseFloat(zoomMappa) || 0.2})`, transformOrigin: 'top left' }}>
           {(tavoli || []).map(t => {
             const pres = getPrenotazioniTurno(t.id);
             const sel = tavoliSelezionati.includes(t.id);
+            
+            // LOGICA COLORI TAVOLI SULLA MAPPA
+            let bgCol = 'white';
+            let bCol = '#adb5bd';
+            if (sel) { bgCol = '#cfe2ff'; bCol = '#0d6efd'; } // Selezionato (Azzurro)
+            else if (pres.length > 1) { bgCol = '#dc3545'; bCol = '#a71d2a'; } // Doppio Turno (ROSSO)
+            else if (pres.some(p => p.presente)) { bgCol = '#d1e7dd'; bCol = '#28a745'; } // Presente (Verde)
+            else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } // Occupato (Arancione)
 
             return (
               <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa) || 0.2} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)} bounds="parent">
-                {/* TAVOLI PIU GRANDI: da 115px a 145px */}
+                {/* TAVOLI GRANDI 145px */}
                 <div onClick={() => clickTavoloSfondo(t.id)}
-                     style={{ position: 'absolute', width: '145px', height: '145px', borderRadius: '18px', background: sel ? '#cfe2ff' : (pres.some(p => p.presente) ? '#d1e7dd' : (pres.length > 0 ? '#fd7e14' : 'white')), border: '3px solid #adb5bd', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none' }}>
+                     style={{ position: 'absolute', width: '145px', height: '145px', borderRadius: '18px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none' }}>
                   
                   {isEditMode && (
                     <>
@@ -573,10 +639,9 @@ export default function App() {
                     </>
                   )}
 
-                  <strong style={{ fontSize: `${dimensioneTestoTavolo}px`, marginBottom: '4px' }}>{t.numero_tavolo}</strong>
+                  <strong style={{ fontSize: `${dimensioneTestoTavolo}px`, marginBottom: '4px', color: (bgCol === '#dc3545') ? 'white' : '#333' }}>{t.numero_tavolo}</strong>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', width: '95%' }}>
                     {pres.map(p => (
-                      /* TESTO TAVOLO OTTIMIZZATO: Ora - Nome (Pax) */
                       <div key={p.id} onClick={(e) => { e.stopPropagation(); setTavoloInfo(t.id); }} style={{ fontSize: `${dimensioneTestoCliente}px`, background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '4px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold', wordBreak: 'break-word', whiteSpace: 'normal', border: p.presente ? '2px solid white' : 'none', lineHeight: '1.2' }}>
                         {formatOra(p.data_ora)} - {p.nome_cliente} <br/> ({p.numero_persone}p)
                       </div>
@@ -713,7 +778,17 @@ export default function App() {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', zIndex: 4000, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }} onClick={() => setShowDisponibilita(false)}>
           <div style={{ background: 'white', padding: '25px', borderRadius: '20px', maxWidth: '900px', margin: '0 auto', minHeight: '80vh' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-               <h2 style={{ margin: 0, color: '#1a73e8' }}>📊 Disponibilità {servizioVista.toUpperCase()} - {formatDataLeggibile(dataVista)}</h2>
+               <h2 style={{ margin: 0, color: '#1a73e8' }}>📊 Disponibilità</h2>
+               
+               {/* Controlli Data e Turno DENTRO la Disponibilità */}
+               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input type="date" value={dataVista} onChange={e => setDataVista(e.target.value)} style={{ padding: '8px', borderRadius: '10px', border: '1px solid #ccc', fontSize: '14px' }} />
+                  <div style={{ background: '#f1f3f5', borderRadius: '10px', padding: '4px', display: 'flex', gap: '4px' }}>
+                    <button onClick={() => setServizioVista('pranzo')} style={{ padding: '6px 12px', border: 'none', borderRadius: '8px', background: servizioVista === 'pranzo' ? 'white' : 'transparent', color: servizioVista === 'pranzo' ? '#1a73e8' : '#555', fontSize: '13px', fontWeight: 'bold', boxShadow: servizioVista === 'pranzo' ? '0 2px 5px rgba(0,0,0,0.1)' : 'none' }}>PRANZO</button>
+                    <button onClick={() => setServizioVista('cena')} style={{ padding: '6px 12px', border: 'none', borderRadius: '8px', background: servizioVista === 'cena' ? 'white' : 'transparent', color: servizioVista === 'cena' ? '#1a73e8' : '#555', fontSize: '13px', fontWeight: 'bold', boxShadow: servizioVista === 'cena' ? '0 2px 5px rgba(0,0,0,0.1)' : 'none' }}>CENA</button>
+                  </div>
+               </div>
+
                <button onClick={() => setShowDisponibilita(false)} style={{ background: '#dc3545', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: 'bold', fontSize: '15px' }}>CHIUDI ✖</button>
             </div>
             
@@ -728,16 +803,23 @@ export default function App() {
                      {tavoliSala.map(t => {
                        const pres = getPrenotazioniTurno(t.id);
                        const isFree = pres.length === 0;
+                       const isDouble = pres.length > 1;
                        
+                       // Colori per doppi turni
+                       let bgC = '#f0fdf4';
+                       let borderC = '#28a745';
+                       if (isDouble) { bgC = '#f8d7da'; borderC = '#dc3545'; } // ROSSO
+                       else if (!isFree) { bgC = '#fff8e1'; borderC = '#fd7e14'; } // ARANCIONE
+
                        return (
-                         <div key={t.id} style={{ width: '130px', padding: '15px 10px', borderRadius: '12px', border: isFree ? '2px solid #28a745' : '2px solid #fd7e14', background: isFree ? '#f0fdf4' : '#fff8e1', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                           <strong style={{ fontSize: '18px', color: '#333' }}>Tav. {t.numero_tavolo}</strong>
+                         <div key={t.id} style={{ width: '130px', padding: '15px 10px', borderRadius: '12px', border: `2px solid ${borderC}`, background: bgC, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                           <strong style={{ fontSize: '18px', color: isDouble ? '#dc3545' : '#333' }}>Tav. {t.numero_tavolo}</strong>
                            <div style={{ fontSize: '13px', marginTop: '8px' }}>
                              {isFree ? (
                                <span style={{ color: '#28a745', fontWeight: 'bold', display: 'block', padding: '5px 0' }}>🟢 LIBERO</span>
                              ) : (
                                pres.map(p => (
-                                 <div key={p.id} style={{ color: '#d35400', fontWeight: 'bold', background: '#ffe8cc', padding: '5px', borderRadius: '6px', marginBottom: '4px', lineHeight: '1.2' }}>
+                                 <div key={p.id} style={{ color: isDouble ? 'white' : '#d35400', fontWeight: 'bold', background: isDouble ? '#dc3545' : '#ffe8cc', padding: '5px', borderRadius: '6px', marginBottom: '4px', lineHeight: '1.2' }}>
                                    {formatOra(p.data_ora)}<br/>{p.nome_cliente}<br/>({p.numero_persone}p)
                                  </div>
                                ))
