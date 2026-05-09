@@ -35,7 +35,7 @@ export default function App() {
   const [ricordami, setRicordami] = useState(false);
   
   const [isMobile, setIsMobile] = useState(window.innerWidth < 992);
-  const [isFullscreen, setIsFullscreen] = useState(false); // NUOVO STATO SCHERMO INTERO
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [sale, setSale] = useState([]);
   const [tuttiITavoli, setTuttiITavoli] = useState([]);
@@ -45,7 +45,6 @@ export default function App() {
   
   const [dimensioneTestoTavolo] = useState(18); 
   const [dimensioneTestoCliente] = useState(12);
-  const [zoomMappa, setZoomMappa] = useState(0.35); // PROPORZIONE FISSA PER CASSA
 
   const [nomeCliente, setNomeCliente] = useState('');
   const [numeroPersone, setNumeroPersone] = useState('');
@@ -65,16 +64,6 @@ export default function App() {
   
   const [showStatistiche, setShowStatistiche] = useState(false);
   const [showCestino, setShowCestino] = useState(false);
-
-  // Gestione Mappa Navigabile (Pan)
-  const mapContainerRef = useRef(null);
-  const [isPanning, setIsPanning] = useState(false);
-  const [startPan, setStartPan] = useState({ x: 0, y: 0 });
-  const [scrollPan, setScrollPan] = useState({ left: 0, top: 0 });
-  
-  // Pinch zoom solo per mobile
-  const [pinchDist, setPinchDist] = useState(null);
-  const [pinchZoom, setPinchZoom] = useState(null);
 
   const fileInputRef = useRef(null);
   const isAdmin = userRole === 'admin';
@@ -106,10 +95,7 @@ export default function App() {
     document.getElementsByTagName('head')[0].appendChild(meta);
   }, []);
 
-  // FUNZIONI ZOOM BOTTONI (Solo per Mobile ora)
-  const zoomIn = () => setZoomMappa(prev => Math.min(prev + 0.1, 1.8));
-  const zoomOut = () => setZoomMappa(prev => Math.max(prev - 0.1, 0.15));
-
+  // REALTIME (In pausa durante modifica)
   useEffect(() => {
     if (isLoggedIn) {
       const channel = supabase
@@ -229,6 +215,7 @@ export default function App() {
     if (!error) { 
         resetForm(); 
         aggiornaTutto(); 
+        // Reset alla data odierna dopo aver salvato la prenotazione!
         setDataVista(formatData(new Date().toISOString()));
         setServizioVista(new Date().getHours() < 16 ? 'pranzo' : 'cena');
         setTimeout(scaricaAgendaFile, 1000); 
@@ -286,13 +273,13 @@ export default function App() {
   }
 
   async function aggiungiTavolo() {
-    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: '?', capacita: 2, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
+    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: '?', capacita: 2, pos_x: 20, pos_y: 20, std_x: 20, std_y: 20 }]);
     await caricaTuttiITavoli(); 
     esportaBackup(); 
   }
 
   async function aggiungiMuro() {
-    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_300x20', capacita: 0, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
+    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_300x20', capacita: 0, pos_x: 20, pos_y: 20, std_x: 20, std_y: 20 }]);
     await caricaTuttiITavoli(); 
     esportaBackup(); 
   }
@@ -413,46 +400,6 @@ export default function App() {
     if (ora && generaOrari().includes(ora)) setOraEsatta(ora); else if (ora) setOraEsatta(ora); 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-
-  const handleMouseDownMap = (e) => {
-    setIsPanning(true);
-    setStartPan({ x: e.pageX - mapContainerRef.current.offsetLeft, y: e.pageY - mapContainerRef.current.offsetTop });
-    setScrollPan({ left: mapContainerRef.current.scrollLeft, top: mapContainerRef.current.scrollTop });
-  };
-  const handleMouseLeaveMap = () => { setIsPanning(false); };
-  const handleMouseUpMap = () => { setIsPanning(false); };
-  const handleMouseMoveMap = (e) => {
-    if (!isPanning) return;
-    e.preventDefault();
-    const x = e.pageX - mapContainerRef.current.offsetLeft;
-    const y = e.pageY - mapContainerRef.current.offsetTop;
-    mapContainerRef.current.scrollLeft = scrollPan.left - (x - startPan.x) * 1.5;
-    mapContainerRef.current.scrollTop = scrollPan.top - (y - startPan.y) * 1.5;
-  };
-
-  const handleTouchStart = (e) => {
-    if (e.touches.length === 2) {
-      setPinchDist(Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY));
-      setPinchZoom(zoomMappa);
-    } else if (!isEditMode && e.touches.length === 1) {
-      setIsPanning(true);
-      setStartPan({ x: e.touches[0].pageX - mapContainerRef.current.offsetLeft, y: e.touches[0].pageY - mapContainerRef.current.offsetTop });
-      setScrollPan({ left: mapContainerRef.current.scrollLeft, top: mapContainerRef.current.scrollTop });
-    }
-  };
-  const handleTouchMove = (e) => {
-    if (e.touches.length === 2 && pinchDist) {
-      let newZ = pinchZoom * (Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY) / pinchDist);
-      if (newZ < 0.15) newZ = 0.15; if (newZ > 1.8) newZ = 1.8;
-      setZoomMappa(newZ);
-    } else if (isPanning && e.touches.length === 1) {
-      const x = e.touches[0].pageX - mapContainerRef.current.offsetLeft;
-      const y = e.touches[0].pageY - mapContainerRef.current.offsetTop;
-      mapContainerRef.current.scrollLeft = scrollPan.left - (x - startPan.x) * 1.5;
-      mapContainerRef.current.scrollTop = scrollPan.top - (y - startPan.y) * 1.5;
-    }
-  };
-  const handleTouchEnd = () => { setPinchDist(null); setIsPanning(false); };
 
   const clickTavoloSfondo = (id) => {
     if (isEditMode) return;
@@ -576,15 +523,6 @@ export default function App() {
             <button onClick={() => setIsEditMode(!isEditMode)} style={{ padding: '8px 12px', borderRadius: '12px', border: 'none', background: isEditMode ? '#28a745' : '#dc3545', color: 'white', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>{isEditMode ? "🔓 Modifica ON" : "🔒 Modifica Mappa"}</button>
           )}
         </div>
-        
-        {/* COMANDI ZOOM SOLO PER MOBILE */}
-        {isMobile && (
-          <div style={{ display: 'flex', gap: '15px', alignItems: 'center', background: '#f8f9fa', padding: '5px 15px', borderRadius: '20px', border: '1px solid #ddd' }}>
-              <span style={{ fontSize: '13px', color: '#666', fontWeight: 'bold' }}>ZOOM:</span>
-              <button onClick={zoomOut} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: '35px', height: '35px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>-</button>
-              <button onClick={zoomIn} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: '35px', height: '35px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>+</button>
-          </div>
-        )}
       </div>
 
       {isAdmin && isEditMode && (
@@ -599,19 +537,10 @@ export default function App() {
         </div>
       )}
 
+      {/* MAPPA PULITA, FLUIDA E 100% SU MISURA */}
       <div 
-        ref={mapContainerRef}
-        onMouseDown={handleMouseDownMap}
-        onMouseLeave={handleMouseLeaveMap}
-        onMouseUp={handleMouseUpMap}
-        onMouseMove={handleMouseMoveMap}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        style={{ flex: 1, minHeight: isMobile ? '55vh' : '65vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative', cursor: isPanning ? 'grabbing' : (isEditMode ? 'default' : 'grab') }}
+        style={{ flex: 1, minHeight: isMobile ? '55vh' : '65vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', position: 'relative', overflow: 'hidden' }}
       >
-        <div style={{ width: '4000px', height: '4000px', position: 'relative', transform: `scale(${parseFloat(zoomMappa)})`, transformOrigin: 'top left' }}>
-          
           {!isEditMode && mergedReservations.map(p => {
              const assignedTables = tuttiITavoli.filter(t => p.tavoli_assegnati.includes(t.id) && !String(t.numero_tavolo).startsWith('MURO'));
              if (assignedTables.length < 2) return null;
@@ -650,7 +579,7 @@ export default function App() {
                if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
                
                return (
-                 <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
+                 <Draggable key={t.id} disabled={!isEditMode} bounds="parent" position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                    <div style={{ position: 'absolute', width: `${w}px`, height: `${h}px`, backgroundColor: '#495057', borderRadius: '6px', cursor: isEditMode ? 'move' : 'default', zIndex: 1, border: '1px solid #343a40' }}>
                      {isAdmin && isEditMode && (
                         <>
@@ -672,7 +601,7 @@ export default function App() {
             else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
 
             return (
-              <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
+              <Draggable key={t.id} disabled={!isEditMode} bounds="parent" position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                 <div onClick={(e) => { e.stopPropagation(); clickTavoloSfondo(t.id); }}
                      style={{ position: 'absolute', width: '120px', height: '120px', borderRadius: '18px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none', zIndex: 5 }}>
                   
@@ -695,7 +624,6 @@ export default function App() {
               </Draggable>
             );
           })}
-        </div>
       </div>
     </div>
   );
@@ -817,7 +745,6 @@ export default function App() {
         </div>
       )}
       
-      {/* Quando a schermo intero renderizziamo la mappa fuori dal flusso normale per sovrascrivere tutto */}
       {isFullscreen && SezioneMappa}
 
       {/* POP-UP TAVOLO DETTAGLIO */}
