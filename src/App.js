@@ -43,6 +43,10 @@ export default function App() {
   const [dataVista, setDataVista] = useState(formatData(new Date().toISOString()));
   const [servizioVista, setServizioVista] = useState(new Date().getHours() < 16 ? 'pranzo' : 'cena');
   
+  const [dimensioneTestoTavolo] = useState(18); 
+  const [dimensioneTestoCliente] = useState(12);
+  const [zoomMappa, setZoomMappa] = useState(0.4); 
+
   const [nomeCliente, setNomeCliente] = useState('');
   const [numeroPersone, setNumeroPersone] = useState('');
   const [oraEsatta, setOraEsatta] = useState('');
@@ -61,6 +65,14 @@ export default function App() {
   
   const [showStatistiche, setShowStatistiche] = useState(false);
   const [showCestino, setShowCestino] = useState(false);
+
+  // Gestione Mappa Navigabile
+  const mapContainerRef = useRef(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [startPan, setStartPan] = useState({ x: 0, y: 0 });
+  const [scrollPan, setScrollPan] = useState({ left: 0, top: 0 });
+  const [pinchDist, setPinchDist] = useState(null);
+  const [pinchZoom, setPinchZoom] = useState(null);
 
   const fileInputRef = useRef(null);
   const isAdmin = userRole === 'admin';
@@ -290,17 +302,16 @@ export default function App() {
     alert("📍 Posizioni salvate su Mappa Unica! Backup generato.");
   }
 
-  // NUOVA FUNZIONE: Tira i tavoli dispersi nello schermo
+  // ECCO LA FUNZIONE CHE MANCAVA E CHE FACEVA CRASHARE TUTTO!
   async function recuperaTavoli() {
     if (!window.confirm("Portare tutti i tavoli in alto a sinistra? Usa questa funzione solo se hai perso dei tavoli fuori dallo schermo!")) return;
     const promises = tuttiITavoli.map((t, index) => {
-        // Li incolonna in alto a sinistra per ritrovarli
         let nx = (index % 8) * 110 + 20;
         let ny = Math.floor(index / 8) * 110 + 20;
         return supabase.from('tavoli').update({ pos_x: nx, pos_y: ny }).eq('id', t.id);
     });
     await Promise.all(promises);
-    alert("🧲 Tavoli recuperati!");
+    alert("🧲 Tavoli recuperati con successo!");
     aggiornaTutto();
   }
 
@@ -591,7 +602,6 @@ export default function App() {
                if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
                
                return (
-                 // SOLUZIONE DRAG STUCK: Usiamo defaultPosition invece di position e includiamo un bound limit
                  <Draggable key={isEditMode ? `edit-${t.id}` : `view-${t.id}-${t.pos_x}-${t.pos_y}`} disabled={!isEditMode} bounds="parent" defaultPosition={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                    <div style={{ position: 'absolute', width: `${w}px`, height: `${h}px`, backgroundColor: '#495057', borderRadius: '6px', cursor: isEditMode ? 'move' : 'default', zIndex: 1, border: '1px solid #343a40' }}>
                      {isAdmin && isEditMode && (
@@ -614,7 +624,6 @@ export default function App() {
             else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
 
             return (
-              // SOLUZIONE DRAG STUCK
               <Draggable key={isEditMode ? `edit-${t.id}` : `view-${t.id}-${t.pos_x}-${t.pos_y}`} disabled={!isEditMode} bounds="parent" defaultPosition={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                 <div onClick={(e) => { e.stopPropagation(); clickTavoloSfondo(t.id); }}
                      style={{ position: 'absolute', width: '90px', height: '90px', borderRadius: '15px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none', zIndex: 5 }}>
@@ -733,6 +742,7 @@ export default function App() {
              {isAdmin && <button onClick={() => setShowCestino(true)} style={{ background: '#343a40', color: 'white', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>🗑️ Cestino</button>}
              <button onClick={() => setShowDisponibilita(true)} style={{ background: '#17a2b8', color: 'white', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', boxShadow: '0 2px 5px rgba(23,162,184,0.3)', cursor: 'pointer' }}>📊 Disponibilità</button>
              <button onClick={ascoltaComando} style={{ background: isListening ? '#dc3545' : '#6f42c1', color: 'white', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', boxShadow: isListening ? '0 0 10px #dc3545' : 'none', cursor: 'pointer' }}>{isListening ? '🎙️ Ascolta...' : '🎤 Voce'}</button>
+             {isAdmin && <button onClick={scaricaAgendaFile} style={{ background: '#e7f1ff', color: '#0d6efd', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>📥 AGENDA</button>}
              <button onClick={() => { setIsLoggedIn(false); localStorage.removeItem('belvedere_logged_in'); localStorage.removeItem('belvedere_user_role'); }} style={{ background: '#f8f9fa', color: '#dc3545', padding: '8px 12px', borderRadius: '10px', border: '1px solid #ddd', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>Esci</button>
           </div>
         </div>
