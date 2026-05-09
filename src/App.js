@@ -65,7 +65,7 @@ export default function App() {
   const [showStatistiche, setShowStatistiche] = useState(false);
   const [showCestino, setShowCestino] = useState(false);
 
-  // Gestione Mappa
+  // Gestione Mappa Navigabile
   const mapContainerRef = useRef(null);
   const [isPanning, setIsPanning] = useState(false);
   const [startPan, setStartPan] = useState({ x: 0, y: 0 });
@@ -76,7 +76,6 @@ export default function App() {
   const fileInputRef = useRef(null);
   const isAdmin = userRole === 'admin';
 
-  // Riferimento per bloccare il realtime durante la modifica della mappa
   const isEditModeRef = useRef(isEditMode);
   useEffect(() => {
     isEditModeRef.current = isEditMode;
@@ -104,7 +103,6 @@ export default function App() {
     document.getElementsByTagName('head')[0].appendChild(meta);
   }, []);
 
-  // EVENTO ROTELLINA MOUSE PER ZOOM
   useEffect(() => {
     const mapEl = mapContainerRef.current;
     const handleWheel = (e) => {
@@ -121,7 +119,6 @@ export default function App() {
   const zoomIn = () => setZoomMappa(prev => Math.min(prev + 0.1, 1.8));
   const zoomOut = () => setZoomMappa(prev => Math.max(prev - 0.1, 0.15));
 
-  // REALTIME (Si mette in pausa se la mappa è sbloccata)
   useEffect(() => {
     if (isLoggedIn) {
       const channel = supabase
@@ -420,16 +417,16 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Funzioni Mappa Draggabile Touch/Mouse
   const handleMouseDownMap = (e) => {
+    if (isEditMode) return;
     setIsPanning(true);
     setStartPan({ x: e.pageX - mapContainerRef.current.offsetLeft, y: e.pageY - mapContainerRef.current.offsetTop });
     setScrollPan({ left: mapContainerRef.current.scrollLeft, top: mapContainerRef.current.scrollTop });
   };
-  const handleMouseLeaveMap = () => { setIsPanning(false); };
-  const handleMouseUpMap = () => { setIsPanning(false); };
+  const handleMouseLeaveMap = () => setIsPanning(false);
+  const handleMouseUpMap = () => setIsPanning(false);
   const handleMouseMoveMap = (e) => {
-    if (!isPanning) return;
+    if (!isPanning || isEditMode) return;
     e.preventDefault();
     const x = e.pageX - mapContainerRef.current.offsetLeft;
     const y = e.pageY - mapContainerRef.current.offsetTop;
@@ -461,17 +458,16 @@ export default function App() {
   };
   const handleTouchEnd = () => { setPinchDist(null); setIsPanning(false); };
 
-  const prenotazioniDelServizio = prenotazioniAttive.filter(p => formatData(p.data_ora) === dataVista && getServizioDaOra(p.data_ora) === servizioVista);
-  const totalePaxServizio = prenotazioniDelServizio.reduce((acc, p) => acc + (p.numero_persone || 0), 0);
-  const risultatiRicerca = ricerca.length > 1 ? prenotazioniAttive.filter(p => p.nome_cliente && p.nome_cliente.toLowerCase().includes(ricerca.toLowerCase())) : [];
-
   const clickTavoloSfondo = (id) => {
     if (isEditMode) return;
     if (oraEsatta) setTavoliSelezionati(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]);
     else setTavoloInfo(id);
   };
 
-  const aggiornaPosizioneLocale = (id, x, y) => { setTavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); setTuttiITavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); };
+  const aggiornaPosizioneLocale = (id, x, y) => { 
+      setTavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); 
+      setTuttiITavoli(prev => prev.map(t => t.id === id ? { ...t, pos_x: Math.round(x), pos_y: Math.round(y) } : t)); 
+  };
 
   async function modificaInfoTavolo(t) {
     if (!t || !isAdmin) return;
@@ -486,6 +482,10 @@ export default function App() {
   }
 
   const tuttiITavoliOrdinati = [...(tuttiITavoli || [])].filter(t => !String(t.numero_tavolo).startsWith('MURO')).sort((a, b) => parseInt(a.numero_tavolo) - parseInt(b.numero_tavolo));
+
+  const prenotazioniDelServizio = prenotazioniAttive.filter(p => formatData(p.data_ora) === dataVista && getServizioDaOra(p.data_ora) === servizioVista);
+  const totalePaxServizio = prenotazioniDelServizio.reduce((acc, p) => acc + (p.numero_persone || 0), 0);
+  const risultatiRicerca = ricerca.length > 1 ? prenotazioniAttive.filter(p => p.nome_cliente && p.nome_cliente.toLowerCase().includes(ricerca.toLowerCase())) : [];
 
   const mergedReservations = prenotazioniDelServizio.filter(p => p.tavoli_assegnati && p.tavoli_assegnati.length > 1);
   const mergedTableIds = new Set();
@@ -572,7 +572,6 @@ export default function App() {
           )}
         </div>
         
-        {/* COMANDI ZOOM MANUALI GRANDI PER TOUCH SCHERMI VECCHI */}
         <div style={{ display: 'flex', gap: '15px', alignItems: 'center', background: '#f8f9fa', padding: '5px 15px', borderRadius: '20px', border: '1px solid #ddd' }}>
             <span style={{ fontSize: '13px', color: '#666', fontWeight: 'bold' }}>ZOOM:</span>
             <button onClick={zoomOut} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: '35px', height: '35px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>-</button>
@@ -587,6 +586,8 @@ export default function App() {
             <button onClick={salvaCorrente} style={{ background: '#28a745', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>📍 Salva</button>
             <button onClick={impostaStandard} style={{ background: '#f3e8ff', color: '#6f42c1', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>⭐ Set Std</button>
             <button onClick={ripristinaStandard} style={{ background: '#fff8e1', color: '#d39e00', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>🔄 R. Std</button>
+            <button onClick={esportaBackup} style={{ background: '#343a40', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>💾 Backup</button>
+            <button onClick={() => { if(fileInputRef.current) fileInputRef.current.click() }} style={{ background: '#e83e8c', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>📂 Ripristina</button>
         </div>
       )}
 
@@ -640,8 +641,9 @@ export default function App() {
                const match = String(t.numero_tavolo).match(/MURO_(\d+)x(\d+)/i);
                if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
                
+               // Rimosso bounds="parent"
                return (
-                 <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)} bounds="parent">
+                 <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                    <div style={{ position: 'absolute', width: `${w}px`, height: `${h}px`, backgroundColor: '#495057', borderRadius: '6px', cursor: isEditMode ? 'move' : 'default', zIndex: 1, border: '1px solid #343a40' }}>
                      {isAdmin && isEditMode && (
                         <>
@@ -662,8 +664,9 @@ export default function App() {
             else if (pres.some(p => p.presente)) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
             else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
 
+            // Rimosso bounds="parent" per risolvere il bug della selezione che rimane bloccata
             return (
-              <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStart={(e) => e.stopPropagation()} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)} bounds="parent">
+              <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                 <div onClick={(e) => { e.stopPropagation(); clickTavoloSfondo(t.id); }}
                      style={{ position: 'absolute', width: '120px', height: '120px', borderRadius: '18px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none', zIndex: 5 }}>
                   
@@ -782,7 +785,6 @@ export default function App() {
              {isAdmin && <button onClick={() => setShowCestino(true)} style={{ background: '#343a40', color: 'white', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>🗑️ Cestino</button>}
              <button onClick={() => setShowDisponibilita(true)} style={{ background: '#17a2b8', color: 'white', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', boxShadow: '0 2px 5px rgba(23,162,184,0.3)', cursor: 'pointer' }}>📊 Disponibilità</button>
              <button onClick={ascoltaComando} style={{ background: isListening ? '#dc3545' : '#6f42c1', color: 'white', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', boxShadow: isListening ? '0 0 10px #dc3545' : 'none', cursor: 'pointer' }}>{isListening ? '🎙️ Ascolta...' : '🎤 Voce'}</button>
-             {isAdmin && <button onClick={scaricaAgendaFile} style={{ background: '#e7f1ff', color: '#0d6efd', padding: '8px 12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>📥 AGENDA</button>}
              <button onClick={() => { setIsLoggedIn(false); localStorage.removeItem('belvedere_logged_in'); localStorage.removeItem('belvedere_user_role'); }} style={{ background: '#f8f9fa', color: '#dc3545', padding: '8px 12px', borderRadius: '10px', border: '1px solid #ddd', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>Esci</button>
           </div>
         </div>
