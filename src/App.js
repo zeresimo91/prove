@@ -139,12 +139,21 @@ export default function App() {
         if (!window.confirm("⚠️ ATTENZIONE: Questo ripristinerà TAVOLI e PRENOTAZIONI esattamente come nel backup. Procedo?")) {
            e.target.value = ""; return;
         }
-        if (backupData.tavoli.length > 0) await supabase.from('tavoli').upsert(backupData.tavoli);
-        if (backupData.prenotazioni.length > 0) await supabase.from('prenotazioni').upsert(backupData.prenotazioni);
+        
+        if (backupData.tavoli.length > 0) {
+          const { error } = await supabase.from('tavoli').upsert(backupData.tavoli);
+          if (error) { alert("❌ ERRORE TAVOLI: " + error.message); return; }
+        }
+        
+        if (backupData.prenotazioni.length > 0) {
+          const { error } = await supabase.from('prenotazioni').upsert(backupData.prenotazioni);
+          if (error) { alert("❌ ERRORE PRENOTAZIONI: " + error.message); return; }
+        }
+        
         alert("✅ Ripristino Totale completato!");
         aggiornaTutto();
       } catch (err) {
-        alert("Errore nel ripristino. File non valido.");
+        alert("Errore nel ripristino. File non valido o corrotto.");
       }
       e.target.value = ""; 
     };
@@ -320,55 +329,76 @@ export default function App() {
   };
 
   const compilaFormDaVoce = (fraseOriginale) => {
-    // Sostituiamo la parola "mezza" con "30" per facilitare la comprensione dell'ora
-    let frase = fraseOriginale.replace(/mezza/g, '30');
+    // 1. Traduciamo "mezza" e i numeri testuali in cifre
+    let frase = fraseOriginale.toLowerCase().replace(/\bmezza\b/g, '30');
 
-    // 1. Estrai le Persone (cerca numero prima di "person")
+    const numeriTestuali = {
+      'uno': '1', 'un': '1', 'una': '1', 'due': '2', 'tre': '3', 'quattro': '4', 
+      'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9', 'dieci': '10',
+      'undici': '11', 'dodici': '12', 'tredici': '13', 'quattordici': '14', 'quindici': '15',
+      'sedici': '16', 'diciassette': '17', 'diciotto': '18', 'diciannove': '19', 'venti': '20'
+    };
+
+    // Sostituisce le parole dei numeri con la rispettiva cifra
+    Object.keys(numeriTestuali).forEach(parola => {
+       const regex = new RegExp(`\\b${parola}\\b`, 'gi');
+       frase = frase.replace(regex, numeriTestuali[parola]);
+    });
+
+    // 2. Estrai le Persone
     let pax = '';
     const matchPersone = frase.match(/(\d+)\s*person/i);
     if (matchPersone) pax = matchPersone[1];
 
-    // 2. Estrai l'Ora (cerca "ore" o "alle" seguito da numeri)
+    // 3. Estrai l'Ora
     let ora = '';
-    const matchOra = frase.match(/(?:ore|alle)\s*(\d{1,2})(?:[\:\s\.]*(?:e\s*)?(\d{2}))?/i);
+    const matchOra = frase.match(/(?:ore|alle|le)\s*(\d{1,2})(?:[\:\s\.]*(?:e\s*)?(\d{2}))?/i);
     if (matchOra) {
-      const hh = matchOra[1].padStart(2, '0');
-      const mm = matchOra[2] ? matchOra[2].padStart(2, '0') : '00';
-      ora = `${hh}:${mm}`;
+      let hh = parseInt(matchOra[1], 10);
+      
+      // Magia: se è il servizio serale e tu dici "alle 8", capisce "20:00"
+      if (servizioVista === 'cena' && hh >= 7 && hh <= 11) {
+          hh += 12; 
+      }
+      
+      const hhStr = String(hh).padStart(2, '0');
+      const mmStr = matchOra[2] ? matchOra[2].padStart(2, '0') : '00';
+      ora = `${hhStr}:${mmStr}`;
     }
 
-    // 3. Estrai il Nome (cerca tutto ciò che c'è dopo "per" e prima di numeri/ore)
-    let nome = '';
-    const matchNome = frase.match(/per\s+(.+?)(?=\s+\d+\s*person|\s+ore|\s+alle|$)/i);
+    // 4. Estrai il Nome pulendo la frase da ciò che abbiamo già trovato
+    let fraseSenzaDati = frase;
+    if (matchPersone) fraseSenzaDati = fraseSenzaDati.replace(matchPersone[0], '');
+    if (matchOra) fraseSenzaDati = fraseSenzaDati.replace(matchOra[0], '');
     
-    if (matchNome && matchNome[1]) {
-      nome = matchNome[1].trim();
-    } else {
-      // Piano B: Se non usa la parola "per", puliamo la frase rimuovendo i comandi
-      nome = frase
-        .replace(/aggiungi|prenota|prenotazione|tavolo|un|una/gi, '')
-        .replace(new RegExp(`${pax}\\s*persone?`, 'gi'), '')
-        .replace(/(?:ore|alle)\s*\d{1,2}(?:[\:\s\.]*(?:e\s*)?\d{2}?)?/gi, '')
-        .trim();
+    // Rimuoviamo l'eventuale numero del tavolo per non metterlo nel nome
+    const matchTavolo = fraseSenzaDati.match(/tavolo\s*(\d+)/i);
+    if (matchTavolo) {
+       fraseSenzaDati = fraseSenzaDati.replace(matchTavolo[0], '');
     }
 
-    // Mettiamo l'iniziale maiuscola al nome per eleganza (es: "john smith" -> "John Smith")
-    nome = nome.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1) : '').join(' ');
+    // Puliamo tutte le "parole di comando" rimaste
+    let nomePulito = fraseSenzaDati
+      .replace(/\baggiungi\b|\binserisci\b|\bnuova\b|\bprenota\b|\bprenotazione\b|\bal\b|\bil\b|\btavolo\b|\b1\b|\bper\b/gi, '')
+      .replace(/[.,]/g, '') // toglie la punteggiatura
+      .replace(/\s+/g, ' ') // riduce gli spazi doppi a uno singolo
+      .trim();
 
-    // 4. INSERIAMO I DATI NEL FORM
-    if (nome) setNomeCliente(nome);
+    // Mettiamo le iniziali maiuscole al nome
+    const nomeFinale = nomePulito.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1) : '').join(' ');
+
+    // 5. INSERIAMO I DATI NEL FORM
+    if (nomeFinale) setNomeCliente(nomeFinale);
     if (pax) setNumeroPersone(pax);
     
-    // Controlliamo che l'ora esista nel menu a tendina
     const orariDisponibili = generaOrari();
     if (ora && orariDisponibili.includes(ora)) {
         setOraEsatta(ora);
     } else if (ora) {
-        // Se ha capito un orario strano, lo mettiamo comunque nel campo testuale
         setOraEsatta(ora); 
     }
 
-    // Ti riporta automaticamente in cima alla pagina dove c'è il form
+    // Scorre la pagina verso l'alto per mostrarti il form appena compilato
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -691,7 +721,7 @@ export default function App() {
       })()}
 
       {/* SALVA FISSO IN BASSO */}
-      {nomeCliente && oraEsatta && tavoliSelezionati.length > 0 && !isEditMode && (
+      {nomeCliente && oraEsatta && !isEditMode && (
         <button onClick={salvaPrenotazione} style={{ position: 'fixed', bottom: '25px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000, background: '#28a745', color: 'white', padding: '18px 0', borderRadius: '50px', border: 'none', fontWeight: 'bold', fontSize: '18px', width: '90%', boxShadow: '0 8px 25px rgba(40, 167, 69, 0.4)' }}>💾 CONFERMA PRENOTAZIONE</button>
       )}
     </div>
