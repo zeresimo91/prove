@@ -42,9 +42,9 @@ export default function App() {
   const [dataVista, setDataVista] = useState(formatData(new Date().toISOString()));
   const [servizioVista, setServizioVista] = useState(new Date().getHours() < 16 ? 'pranzo' : 'cena');
   
-  const [dimensioneTestoTavolo] = useState(18); // Leggermente ridotto per POS
+  const [dimensioneTestoTavolo] = useState(18); 
   const [dimensioneTestoCliente] = useState(12);
-  const [zoomMappa, setZoomMappa] = useState(0.4); // Partiamo con uno zoom base più alto per piccoli schermi
+  const [zoomMappa, setZoomMappa] = useState(0.4); 
 
   const [nomeCliente, setNomeCliente] = useState('');
   const [numeroPersone, setNumeroPersone] = useState('');
@@ -65,14 +65,22 @@ export default function App() {
   const [showStatistiche, setShowStatistiche] = useState(false);
   const [showCestino, setShowCestino] = useState(false);
 
-  // Gestione Mappa Navigabile
+  // Gestione Mappa
   const mapContainerRef = useRef(null);
   const [isPanning, setIsPanning] = useState(false);
   const [startPan, setStartPan] = useState({ x: 0, y: 0 });
   const [scrollPan, setScrollPan] = useState({ left: 0, top: 0 });
+  const [pinchDist, setPinchDist] = useState(null);
+  const [pinchZoom, setPinchZoom] = useState(null);
 
   const fileInputRef = useRef(null);
   const isAdmin = userRole === 'admin';
+
+  // Riferimento per bloccare il realtime durante la modifica della mappa
+  const isEditModeRef = useRef(isEditMode);
+  useEffect(() => {
+    isEditModeRef.current = isEditMode;
+  }, [isEditMode]);
 
   const prenotazioniAttive = prenotazioni.filter(p => !p.eliminata);
   const prenotazioniEliminate = prenotazioni.filter(p => p.eliminata).sort((a,b) => new Date(b.data_eliminazione) - new Date(a.data_eliminazione));
@@ -110,17 +118,20 @@ export default function App() {
     return () => { if (mapEl) mapEl.removeEventListener('wheel', handleWheel); };
   }, [isLoggedIn]);
 
-  // FUNZIONI ZOOM BOTTONI (Per Schermi Touch)
   const zoomIn = () => setZoomMappa(prev => Math.min(prev + 0.1, 1.8));
   const zoomOut = () => setZoomMappa(prev => Math.max(prev - 0.1, 0.15));
 
-  // REALTIME
+  // REALTIME (Si mette in pausa se la mappa è sbloccata)
   useEffect(() => {
     if (isLoggedIn) {
       const channel = supabase
         .channel('schema-db-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'prenotazioni' }, () => { caricaPrenotazioni(); })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tavoli' }, () => { caricaTuttiITavoli(); })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'prenotazioni' }, () => { 
+            if (!isEditModeRef.current) caricaPrenotazioni(); 
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tavoli' }, () => { 
+            if (!isEditModeRef.current) caricaTuttiITavoli(); 
+        })
         .subscribe();
       return () => { supabase.removeChannel(channel); };
     }
@@ -409,17 +420,16 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Funzioni Mappa Draggabile Touch/Mouse per POS
+  // Funzioni Mappa Draggabile Touch/Mouse
   const handleMouseDownMap = (e) => {
-    if (isEditMode) return;
     setIsPanning(true);
     setStartPan({ x: e.pageX - mapContainerRef.current.offsetLeft, y: e.pageY - mapContainerRef.current.offsetTop });
     setScrollPan({ left: mapContainerRef.current.scrollLeft, top: mapContainerRef.current.scrollTop });
   };
-  const handleMouseLeaveMap = () => setIsPanning(false);
-  const handleMouseUpMap = () => setIsPanning(false);
+  const handleMouseLeaveMap = () => { setIsPanning(false); };
+  const handleMouseUpMap = () => { setIsPanning(false); };
   const handleMouseMoveMap = (e) => {
-    if (!isPanning || isEditMode) return;
+    if (!isPanning) return;
     e.preventDefault();
     const x = e.pageX - mapContainerRef.current.offsetLeft;
     const y = e.pageY - mapContainerRef.current.offsetTop;
@@ -427,13 +437,11 @@ export default function App() {
     mapContainerRef.current.scrollTop = scrollPan.top - (y - startPan.y) * 1.5;
   };
 
-  // Funzioni per schermi touch mobili (Pinch to Zoom)
   const handleTouchStart = (e) => {
     if (e.touches.length === 2) {
       setPinchDist(Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY));
       setPinchZoom(zoomMappa);
     } else if (!isEditMode && e.touches.length === 1) {
-      // Abilita Drag Mappa su Touch per un dito
       setIsPanning(true);
       setStartPan({ x: e.touches[0].pageX - mapContainerRef.current.offsetLeft, y: e.touches[0].pageY - mapContainerRef.current.offsetTop });
       setScrollPan({ left: mapContainerRef.current.scrollLeft, top: mapContainerRef.current.scrollTop });
@@ -584,16 +592,15 @@ export default function App() {
 
       <div 
         ref={mapContainerRef}
-        onMouseDown={handleMouseDownMap}
-        onMouseLeave={handleMouseLeaveMap}
-        onMouseUp={handleMouseUpMap}
-        onMouseMove={handleMouseMoveMap}
+        onMouseDown={!isEditMode ? handleMouseDownMap : undefined}
+        onMouseLeave={!isEditMode ? handleMouseLeaveMap : undefined}
+        onMouseUp={!isEditMode ? handleMouseUpMap : undefined}
+        onMouseMove={!isEditMode ? handleMouseMoveMap : undefined}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        style={{ flex: 1, minHeight: isMobile ? '55vh' : '65vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'hidden', position: 'relative', cursor: isPanning ? 'grabbing' : (isEditMode ? 'default' : 'grab') }}
+        style={{ flex: 1, minHeight: isMobile ? '55vh' : '65vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative', cursor: isPanning ? 'grabbing' : (isEditMode ? 'default' : 'grab') }}
       >
-        {/* MAPPA CONTAINER. Uso scale per zoom. Dimensioni reali più ampie per evitare il taglio */}
         <div style={{ width: '4000px', height: '4000px', position: 'relative', transform: `scale(${parseFloat(zoomMappa) || 0.4})`, transformOrigin: 'top left' }}>
           
           {!isEditMode && mergedReservations.map(p => {
@@ -604,7 +611,7 @@ export default function App() {
              const minY = Math.min(...assignedTables.map(t => Number(t.pos_y) || 0));
              const maxX = Math.max(...assignedTables.map(t => Number(t.pos_x) || 0));
              const maxY = Math.max(...assignedTables.map(t => Number(t.pos_y) || 0));
-             const width = (maxX - minX) + 120; // 120 è la larghezza base
+             const width = (maxX - minX) + 120; 
              const height = (maxY - minY) + 120;
 
              let bgCol = '#fd7e14'; let bCol = '#d35400';
@@ -633,9 +640,8 @@ export default function App() {
                const match = String(t.numero_tavolo).match(/MURO_(\d+)x(\d+)/i);
                if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
                
-               // CORREZIONE BUG DRAG: Scale passato al Draggable
                return (
-                 <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
+                 <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)} bounds="parent">
                    <div style={{ position: 'absolute', width: `${w}px`, height: `${h}px`, backgroundColor: '#495057', borderRadius: '6px', cursor: isEditMode ? 'move' : 'default', zIndex: 1, border: '1px solid #343a40' }}>
                      {isAdmin && isEditMode && (
                         <>
@@ -657,7 +663,7 @@ export default function App() {
             else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
 
             return (
-              <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
+              <Draggable key={t.id} disabled={!isEditMode} scale={parseFloat(zoomMappa)} position={{ x: Number(t.pos_x) || 0, y: Number(t.pos_y) || 0 }} onStart={(e) => e.stopPropagation()} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)} bounds="parent">
                 <div onClick={(e) => { e.stopPropagation(); clickTavoloSfondo(t.id); }}
                      style={{ position: 'absolute', width: '120px', height: '120px', borderRadius: '18px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none', zIndex: 5 }}>
                   
@@ -790,7 +796,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* STRUTTURA RESPONSIVE: Altezza flessibile */}
       {isMobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', flexGrow: 1, paddingBottom: '80px' }}>
           {SezioneForm}
@@ -965,7 +970,6 @@ export default function App() {
         </div>
       )}
 
-      {/* PULSANTONE FLUTTUANTE SOLO SU MOBILE */}
       {isMobile && nomeCliente && oraEsatta && tavoliSelezionati.length > 0 && !isEditMode && (
         <button onClick={salvaPrenotazione} style={{ position: 'fixed', bottom: '25px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000, background: '#28a745', color: 'white', padding: '18px 0', borderRadius: '50px', border: 'none', fontWeight: 'bold', fontSize: '18px', width: '90%', boxShadow: '0 8px 25px rgba(40, 167, 69, 0.4)', cursor: 'pointer' }}>💾 CONFERMA PRENOTAZIONE</button>
       )}
