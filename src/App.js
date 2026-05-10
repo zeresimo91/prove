@@ -79,7 +79,10 @@ export default function App() {
   const prenotazioniEliminate = prenotazioni.filter(p => p.eliminata).sort((a,b) => new Date(b.data_eliminazione) - new Date(a.data_eliminazione));
 
   const updateMapScale = () => {
-    if (mapContainerRef.current) {
+    const savedZoom = localStorage.getItem('belvedere_map_zoom');
+    if (savedZoom) {
+      setMapScale(parseFloat(savedZoom));
+    } else if (mapContainerRef.current) {
       const { clientWidth } = mapContainerRef.current;
       const initialScale = isMobile ? Math.min(clientWidth / 800, 1) : Math.min(clientWidth / VIRTUAL_WIDTH, 1);
       setMapScale(initialScale); 
@@ -129,6 +132,12 @@ export default function App() {
   const zoomBtnSize = '40px';
   const zoomIn = () => setMapScale(prev => Math.min(prev + 0.1, 1.8));
   const zoomOut = () => setMapScale(prev => Math.max(prev - 0.1, 0.2));
+
+  // --- FUNZIONE SALVA ZOOM ---
+  const salvaZoom = () => {
+    localStorage.setItem('belvedere_map_zoom', mapScale.toString());
+    alert("🔍 Livello di zoom salvato per questo dispositivo!");
+  };
 
   // REALTIME
   useEffect(() => {
@@ -583,6 +592,7 @@ export default function App() {
             <span style={{ fontSize: '13px', color: '#666', fontWeight: 'bold' }}>ZOOM:</span>
             <button onClick={zoomOut} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: zoomBtnSize, height: zoomBtnSize, fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>-</button>
             <button onClick={zoomIn} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: zoomBtnSize, height: zoomBtnSize, fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>+</button>
+            <button onClick={salvaZoom} style={{ background: '#28a745', color: 'white', border: 'none', borderRadius: '10px', padding: '8px 12px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', marginLeft: '5px' }}>💾 Salva</button>
         </div>
       </div>
 
