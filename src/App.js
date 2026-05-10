@@ -64,7 +64,7 @@ export default function App() {
   const fileInputRef = useRef(null);
   const mapContainerRef = useRef(null);
   const [mapScale, setMapScale] = useState(1);
-  const VIRTUAL_WIDTH = 1500; // Spazio di lavoro mappa aumentato per sicurezza
+  const VIRTUAL_WIDTH = 1500; 
   const VIRTUAL_HEIGHT = 1000; 
   
   const isAdmin = userRole === 'admin';
@@ -81,7 +81,6 @@ export default function App() {
   const updateMapScale = () => {
     if (mapContainerRef.current) {
       const { clientWidth } = mapContainerRef.current;
-      // Scala iniziale intelligente basata sulla larghezza dello schermo
       const initialScale = isMobile ? Math.min(clientWidth / 800, 1) : Math.min(clientWidth / VIRTUAL_WIDTH, 1);
       setMapScale(initialScale); 
     }
@@ -92,7 +91,6 @@ export default function App() {
       setIsMobile(window.innerWidth < 992);
     };
     window.addEventListener('resize', handleResize);
-    // Timeout per assicurarsi che il DOM sia renderizzato prima di misurare
     setTimeout(updateMapScale, 100);
     return () => window.removeEventListener('resize', handleResize);
   }, [isLoggedIn, isFullscreen]);
@@ -106,29 +104,30 @@ export default function App() {
     }
   }, []);
 
-  // STILI OTTIMIZZATI E SICURI
+  // STILI OTTIMIZZATI PER MOBILE E PC
   const topBtnStyle = { 
-    padding: isMobile ? '10px 14px' : '8px 12px', 
+    padding: '10px 16px', 
     borderRadius: '10px', 
     border: 'none', 
     fontWeight: 'bold', 
-    fontSize: isMobile ? '14px' : '12px', 
+    fontSize: '13px', 
     cursor: 'pointer',
-    flex: isMobile ? '1 1 calc(33% - 10px)' : 'initial', // Su mobile si adattano a griglia
-    textAlign: 'center'
+    whiteSpace: 'nowrap', // Impedisce al testo di andare a capo su mobile
+    flexShrink: 0 // Impedisce ai bottoni di schiacciarsi
   };
 
   const mapBtnStyle = { 
-    padding: isMobile ? '10px 14px' : '8px 12px', 
+    padding: '10px 14px', 
     borderRadius: '12px', 
     border: 'none', 
     color: 'white', 
-    fontSize: isMobile ? '14px' : '13px', 
+    fontSize: '13px', 
     fontWeight: 'bold', 
-    cursor: 'pointer' 
+    cursor: 'pointer',
+    whiteSpace: 'nowrap'
   };
 
-  const zoomBtnSize = isMobile ? '45px' : '35px';
+  const zoomBtnSize = '40px';
   const zoomIn = () => setMapScale(prev => Math.min(prev + 0.1, 1.8));
   const zoomOut = () => setMapScale(prev => Math.max(prev - 0.1, 0.2));
 
@@ -327,8 +326,17 @@ export default function App() {
     alert("📍 Posizioni salvate su Mappa Unica!");
   }
 
+  // === NUOVA FUNZIONE PER SPOSTARE TUTTO A DESTRA ===
+  async function spostaTuttoADestra() {
+    if (!window.confirm("Vuoi spostare TUTTI i tavoli e muri a destra di 150 pixel?")) return;
+    const promises = tuttiITavoli.map(t => supabase.from('tavoli').update({ pos_x: Number(t.pos_x) + 150 }).eq('id', t.id));
+    await Promise.all(promises);
+    alert("➡️ Mappa spostata a destra con successo! Salva come Set Standard se va bene.");
+    aggiornaTutto();
+  }
+
   async function recuperaTavoli() {
-    if (!window.confirm("Portare tutti i tavoli in alto a sinistra? Usa questa funzione solo se hai perso dei tavoli fuori dallo schermo!")) return;
+    if (!window.confirm("Portare tutti i tavoli in alto a sinistra?")) return;
     const promises = tuttiITavoli.map((t, index) => {
         let nx = (index % 8) * 110 + 20;
         let ny = Math.floor(index / 8) * 110 + 20;
@@ -506,34 +514,36 @@ export default function App() {
     );
   }
 
+  // COMPONENTI UI
   const SezioneForm = (
     <div style={{ background: 'white', padding: '15px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', flexShrink: 0 }}>
       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
         <h3 style={{margin: 0, fontSize: '16px', color: '#333'}}>Nuova Prenotazione</h3>
-        {editingId && <button onClick={resetForm} style={{padding: '5px 10px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '12px'}}>Annulla Modifica</button>}
+        {editingId && <button onClick={resetForm} style={{padding: '5px 10px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '12px'}}>Annulla</button>}
       </div>
       <form onSubmit={salvaPrenotazione} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <input type="text" placeholder="Nome Cliente" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} required style={{ padding: isMobile ? '16px' : '12px', borderRadius: '12px', border: '1px solid #ced4da', fontSize: isMobile ? '16px' : '15px' }} />
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <input type="number" placeholder="Pax" value={numeroPersone} onChange={e => setNumeroPersone(e.target.value)} required style={{ flex: 1, padding: isMobile ? '16px' : '12px', borderRadius: '12px', border: '1px solid #ced4da', fontSize: isMobile ? '16px' : '15px' }} />
-          <select value={oraEsatta} onChange={e => setOraEsatta(e.target.value)} required style={{ flex: 1.5, padding: isMobile ? '16px' : '12px', borderRadius: '12px', border: '1px solid #ced4da', fontSize: isMobile ? '16px' : '15px', fontWeight: 'bold' }}>
+        <input type="text" placeholder="Nome Cliente" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} required style={{ padding: '12px', borderRadius: '12px', border: '1px solid #ced4da', fontSize: '15px', width: '100%', boxSizing: 'border-box' }} />
+        <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+          <input type="number" placeholder="Pax" value={numeroPersone} onChange={e => setNumeroPersone(e.target.value)} required style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid #ced4da', fontSize: '15px', boxSizing: 'border-box' }} />
+          <select value={oraEsatta} onChange={e => setOraEsatta(e.target.value)} required style={{ flex: 1.5, padding: '12px', borderRadius: '12px', border: '1px solid #ced4da', fontSize: '15px', fontWeight: 'bold', boxSizing: 'border-box' }}>
             <option value="">Ora...</option>
             {generaOrari().map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         </div>
-        <textarea placeholder="Note..." value={note} onChange={e => setNote(e.target.value)} style={{ padding: isMobile ? '16px' : '12px', borderRadius: '12px', border: '1px solid #ced4da', minHeight: '40px', fontSize: isMobile ? '15px' : '14px' }} />
+        <textarea placeholder="Note..." value={note} onChange={e => setNote(e.target.value)} style={{ padding: '12px', borderRadius: '12px', border: '1px solid #ced4da', minHeight: '40px', fontSize: '14px', width: '100%', boxSizing: 'border-box' }} />
         
         <select value="" onChange={(e) => { 
             const val = e.target.value; 
             const targetTable = tuttiITavoliOrdinati.find(t => String(t.id) === String(val));
             if (targetTable && !tavoliSelezionati.includes(targetTable.id)) setTavoliSelezionati(prev => [...prev, targetTable.id]);
-        }} style={{ padding: isMobile ? '16px' : '12px', borderRadius: '12px', border: '2px solid #e7f1ff', fontSize: isMobile ? '16px' : '15px', fontWeight: 'bold' }}>
+        }} style={{ padding: '12px', borderRadius: '12px', border: '2px solid #e7f1ff', fontSize: '15px', fontWeight: 'bold', width: '100%', boxSizing: 'border-box' }}>
           <option value="">➕ Assegna Tavolo...</option>
           {tuttiITavoliOrdinati.map(t => {
              const isFree = getPrenotazioniTurno(t.id).length === 0;
              return <option key={t.id} value={t.id}>Tav. {t.numero_tavolo} - {isFree ? "🟢 Libero" : "🟠 Occupato"}</option>
           })}
         </select>
+        
         {tavoliSelezionati.length > 0 && (
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {tavoliSelezionati.map(id => (
@@ -543,7 +553,7 @@ export default function App() {
               ))}
             </div>
         )}
-        <button type="submit" style={{ padding: '14px', background: editingId ? '#ffc107' : '#1a73e8', color: editingId ? 'black' : 'white', borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}>
+        <button type="submit" style={{ padding: '14px', background: editingId ? '#ffc107' : '#1a73e8', color: editingId ? 'black' : 'white', borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}>
             {editingId ? "💾 AGGIORNA PRENOTAZIONE" : "💾 SALVA PRENOTAZIONE"}
         </button>
       </form>
@@ -553,46 +563,45 @@ export default function App() {
   const SezioneMappa = (
     <div style={isFullscreen ? {
       position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999, 
-      backgroundColor: '#f4f6f8', padding: '15px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: '10px'
+      backgroundColor: '#f4f6f8', padding: '10px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: '10px'
     } : { 
-      display: 'flex', flexDirection: 'column', gap: '10px', height: '100%', position: 'relative' 
+      display: 'flex', flexDirection: 'column', gap: '10px', height: isMobile ? '400px' : '100%', position: 'relative' 
     }}>
       
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '10px 15px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', gap: '10px', flexWrap: 'wrap', flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <button onClick={() => setIsFullscreen(!isFullscreen)} style={{ ...mapBtnStyle, background: '#1a73e8' }}>
-            {isFullscreen ? "❌ Chiudi Schermo Intero" : "🖥️ Schermo Intero"}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '8px 12px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? 'space-between' : 'flex-start' }}>
+          <button onClick={() => setIsFullscreen(!isFullscreen)} style={{ ...mapBtnStyle, background: '#1a73e8', flex: isMobile ? '1' : 'none' }}>
+            {isFullscreen ? "❌ Chiudi" : "🖥️ Espandi"}
           </button>
           
           {isAdmin && (
-            <button onClick={() => setIsEditMode(!isEditMode)} style={{ ...mapBtnStyle, background: isEditMode ? '#28a745' : '#dc3545' }}>
+            <button onClick={() => setIsEditMode(!isEditMode)} style={{ ...mapBtnStyle, background: isEditMode ? '#28a745' : '#dc3545', flex: isMobile ? '1' : 'none' }}>
               {isEditMode ? "🔓 Modifica ON" : "🔒 Modifica Mappa"}
             </button>
           )}
         </div>
         
-        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', background: '#f8f9fa', padding: '5px 15px', borderRadius: '20px', border: '1px solid #ddd' }}>
-            <span style={{ fontSize: '14px', color: '#666', fontWeight: 'bold' }}>ZOOM:</span>
-            <button onClick={zoomOut} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: zoomBtnSize, height: zoomBtnSize, fontSize: '24px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>-</button>
-            <button onClick={zoomIn} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: zoomBtnSize, height: zoomBtnSize, fontSize: '24px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>+</button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: '#f8f9fa', padding: '4px 10px', borderRadius: '20px', border: '1px solid #ddd', margin: isMobile ? '0 auto' : '0' }}>
+            <span style={{ fontSize: '13px', color: '#666', fontWeight: 'bold' }}>ZOOM:</span>
+            <button onClick={zoomOut} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: zoomBtnSize, height: zoomBtnSize, fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>-</button>
+            <button onClick={zoomIn} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: zoomBtnSize, height: zoomBtnSize, fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>+</button>
         </div>
       </div>
 
       {isAdmin && isEditMode && (
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingBottom: '5px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '5px', whiteSpace: 'nowrap' }}>
             <button onClick={aggiungiTavolo} style={{ ...topBtnStyle, background: '#0d6efd', color: 'white' }}>➕ Tavolo</button>
             <button onClick={aggiungiMuro} style={{ ...topBtnStyle, background: '#495057', color: 'white' }}>🧱 Muro</button>
             <button onClick={salvaCorrente} style={{ ...topBtnStyle, background: '#28a745', color: 'white' }}>📍 Salva Posizioni</button>
+            <button onClick={spostaTuttoADestra} style={{ ...topBtnStyle, background: '#17a2b8', color: 'white' }}>➡️ Sposta a Destra</button>
             <button onClick={impostaStandard} style={{ ...topBtnStyle, background: '#f3e8ff', color: '#6f42c1' }}>⭐ Set Std</button>
             <button onClick={ripristinaStandard} style={{ ...topBtnStyle, background: '#fff8e1', color: '#d39e00' }}>🔄 R. Std</button>
             <button onClick={recuperaTavoli} style={{ ...topBtnStyle, background: '#ffc107', color: 'black' }}>🧲 Recupera</button>
-            <button onClick={esportaBackup} style={{ ...topBtnStyle, background: '#343a40', color: 'white' }}>💾 Backup</button>
-            <button onClick={() => { if(fileInputRef.current) fileInputRef.current.click() }} style={{ ...topBtnStyle, background: '#e83e8c', color: 'white' }}>📂 Ripristina</button>
         </div>
       )}
 
-      {/* RISOLTO IL BUG DELLA SCROLLBAR: Doppio wrapper per calcolare l'area di trasformazione corretta */}
-      <div ref={mapContainerRef} style={{ flex: 1, minHeight: isMobile ? '55vh' : 'auto', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative' }}>
+      {/* Contenitore Mappa: overflow auto permette di muoversi sulla mappa su mobile senza rimanere bloccati */}
+      <div ref={mapContainerRef} style={{ flex: 1, backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative' }}>
         <div style={{ width: VIRTUAL_WIDTH * mapScale, height: VIRTUAL_HEIGHT * mapScale }}>
           <div style={{ width: `${VIRTUAL_WIDTH}px`, height: `${VIRTUAL_HEIGHT}px`, transform: `scale(${mapScale})`, transformOrigin: 'top left', position: 'relative' }}>
             
@@ -634,14 +643,7 @@ export default function App() {
                  if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
                  
                  return (
-                   <Draggable 
-                      key={t.id} 
-                      disabled={!isEditMode} 
-                      scale={mapScale} 
-                      bounds="parent"
-                      position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} 
-                      onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}
-                   >
+                   <Draggable key={t.id} disabled={!isEditMode} scale={mapScale} bounds="parent" position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                      <div style={{ position: 'absolute', top: 0, left: 0, width: `${w}px`, height: `${h}px`, backgroundColor: '#495057', borderRadius: '6px', cursor: isEditMode ? 'move' : 'default', zIndex: 1, border: '1px solid #343a40' }}>
                        {isAdmin && isEditMode && (
                           <>
@@ -663,14 +665,7 @@ export default function App() {
               else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
 
               return (
-                <Draggable 
-                   key={t.id} 
-                   disabled={!isEditMode} 
-                   scale={mapScale} 
-                   bounds="parent"
-                   position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} 
-                   onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}
-                >
+                <Draggable key={t.id} disabled={!isEditMode} scale={mapScale} bounds="parent" position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
                   <div onClick={(e) => { e.stopPropagation(); if (!isEditMode) clickTavoloSfondo(t.id); }}
                        onMouseDown={(e) => { if(isEditMode) e.stopPropagation(); }}
                        onTouchStart={(e) => { if(isEditMode) e.stopPropagation(); }}
@@ -687,7 +682,7 @@ export default function App() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '95%' }}>
                       {pres.map(p => (
                         <div key={p.id} onClick={(e) => { e.stopPropagation(); if(!isEditMode) setTavoloInfo(t.id); }} style={{ fontSize: `10px`, background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '2px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: p.presente ? '1px solid white' : 'none', lineHeight: '1.2' }}>
-                          {formatOra(p.data_ora)} - {p.nome_cliente}
+                          {formatOra(p.data_ora)} - {p.nome_cliente.substring(0,6)}
                         </div>
                       ))}
                     </div>
@@ -783,11 +778,13 @@ export default function App() {
 
       {/* HEADER GLOBALE */}
       <div style={{ background: 'white', padding: '12px 15px', borderRadius: '16px', marginBottom: '10px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', flexShrink: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-          
-          <img src="/logo.png" alt="Belvedere" style={{ height: isMobile ? '40px' : '55px', objectFit: 'contain' }} />
+        
+        {/* RIGA 1: Logo e Bottoni scorrevoli */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', alignItems: 'center', gap: '15px' }}>
+          <img src="/logo.png" alt="Belvedere" style={{ height: isMobile ? '40px' : '50px', objectFit: 'contain', flexShrink: 0 }} />
 
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {/* Wrapper per lo scroll orizzontale dei bottoni su mobile */}
+          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', flexGrow: 1, WebkitOverflowScrolling: 'touch' }}>
              {isAdmin && <button onClick={() => setShowStatistiche(true)} style={{ ...topBtnStyle, background: '#6c757d', color: 'white' }}>📈 Statistiche</button>}
              {isAdmin && <button onClick={() => setShowCestino(true)} style={{ ...topBtnStyle, background: '#343a40', color: 'white' }}>🗑️ Cestino</button>}
              <button onClick={() => setShowDisponibilita(true)} style={{ ...topBtnStyle, background: '#17a2b8', color: 'white', boxShadow: '0 2px 5px rgba(23,162,184,0.3)' }}>📊 Disponibilità</button>
@@ -797,29 +794,28 @@ export default function App() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', alignItems: 'center' }}>
-          <input type="date" value={dataVista} onChange={e => setDataVista(e.target.value)} style={{ padding: isMobile ? '12px' : '8px', borderRadius: '10px', border: '1px solid #ddd', fontSize: isMobile ? '16px' : '14px' }} />
+        {/* RIGA 2: Data e Servizio */}
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <input type="date" value={dataVista} onChange={e => setDataVista(e.target.value)} style={{ padding: '8px', borderRadius: '10px', border: '1px solid #ddd', fontSize: '14px', flexShrink: 0 }} />
           <div style={{ background: '#f1f3f5', borderRadius: '12px', padding: '4px', display: 'flex', gap: '4px' }}>
-            <button onClick={() => setServizioVista('pranzo')} style={{ padding: isMobile ? '10px 20px' : '6px 16px', border: 'none', borderRadius: '10px', background: servizioVista === 'pranzo' ? 'white' : 'transparent', color: servizioVista === 'pranzo' ? '#1a73e8' : '#555', fontSize: isMobile ? '15px' : '13px', fontWeight: 'bold', boxShadow: servizioVista === 'pranzo' ? '0 2px 5px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer' }}>PRANZO</button>
-            <button onClick={() => setServizioVista('cena')} style={{ padding: isMobile ? '10px 20px' : '6px 16px', border: 'none', borderRadius: '10px', background: servizioVista === 'cena' ? 'white' : 'transparent', color: servizioVista === 'cena' ? '#1a73e8' : '#555', fontSize: isMobile ? '15px' : '13px', fontWeight: 'bold', boxShadow: servizioVista === 'cena' ? '0 2px 5px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer' }}>CENA</button>
+            <button onClick={() => setServizioVista('pranzo')} style={{ padding: '8px 16px', border: 'none', borderRadius: '10px', background: servizioVista === 'pranzo' ? 'white' : 'transparent', color: servizioVista === 'pranzo' ? '#1a73e8' : '#555', fontSize: '13px', fontWeight: 'bold', boxShadow: servizioVista === 'pranzo' ? '0 2px 5px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer' }}>PRANZO</button>
+            <button onClick={() => setServizioVista('cena')} style={{ padding: '8px 16px', border: 'none', borderRadius: '10px', background: servizioVista === 'cena' ? 'white' : 'transparent', color: servizioVista === 'cena' ? '#1a73e8' : '#555', fontSize: '13px', fontWeight: 'bold', boxShadow: servizioVista === 'cena' ? '0 2px 5px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer' }}>CENA</button>
           </div>
         </div>
       </div>
 
       {isMobile ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', flexGrow: 1, paddingBottom: '80px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', overflowY: 'auto', flexGrow: 1, paddingBottom: '90px' }}>
           {SezioneForm}
           {!isFullscreen && SezioneMappa}
           {SezioneAgenda}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'row', gap: '15px', flexGrow: 1, overflow: 'hidden' }}>
-          {/* COLONNA SINISTRA PC (Form + Agenda) con scrolling indipendente */}
           <div style={{ flex: '0 0 32%', display: 'flex', flexDirection: 'column', gap: '10px', height: '100%', overflowY: 'auto', paddingRight: '5px' }}>
              {SezioneForm}
              {SezioneAgenda}
           </div>
-          {/* COLONNA DESTRA PC (Mappa) bloccata e scrollabile all'interno */}
           <div style={{ flex: '1', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
              {!isFullscreen && SezioneMappa}
           </div>
@@ -862,7 +858,7 @@ export default function App() {
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px' }}>
-                <button onClick={() => occupaTavoloVeloce(tavoloInfo)} style={{ width: '100%', padding: '14px', borderRadius: '12px', border: 'none', background: '#28a745', color: 'white', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}>🚶 OCCUPA (Senza Pren.)</button>
+                <button onClick={() => occupaTavoloVeloce(tavoloInfo)} style={{ width: '100%', padding: '14px', borderRadius: '12px', border: 'none', background: '#28a745', color: 'white', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}>🚶 OCCUPA SUBITO</button>
                 <button onClick={() => { setTavoliSelezionati([tavoloInfo]); setTavoloInfo(null); window.scrollTo(0,0); setIsFullscreen(false); }} style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '2px solid #1a73e8', background: 'white', color: '#1a73e8', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}>➕ NUOVA PRENOTAZIONE</button>
               </div>
             </div>
