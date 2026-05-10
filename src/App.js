@@ -58,17 +58,17 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
   const [testoVocale, setTestoVocale] = useState('');
   const [showDisponibilita, setShowDisponibilita] = useState(false);
-  
   const [showStatistiche, setShowStatistiche] = useState(false);
   const [showCestino, setShowCestino] = useState(false);
 
   const fileInputRef = useRef(null);
   const mapContainerRef = useRef(null);
   const [mapScale, setMapScale] = useState(1);
-  const VIRTUAL_WIDTH = 1200; 
-  const VIRTUAL_HEIGHT = 800; 
+  const VIRTUAL_WIDTH = 1500; // Spazio di lavoro mappa aumentato per sicurezza
+  const VIRTUAL_HEIGHT = 1000; 
   
   const isAdmin = userRole === 'admin';
+  const dimensioneTestoTavolo = 18;
 
   const isEditModeRef = useRef(isEditMode);
   useEffect(() => {
@@ -80,20 +80,20 @@ export default function App() {
 
   const updateMapScale = () => {
     if (mapContainerRef.current) {
-      const { clientWidth, clientHeight } = mapContainerRef.current;
-      const scaleX = clientWidth / VIRTUAL_WIDTH;
-      const scaleY = clientHeight / VIRTUAL_HEIGHT;
-      setMapScale(Math.min(scaleX, scaleY, 1.5)); 
+      const { clientWidth } = mapContainerRef.current;
+      // Scala iniziale intelligente basata sulla larghezza dello schermo
+      const initialScale = isMobile ? Math.min(clientWidth / 800, 1) : Math.min(clientWidth / VIRTUAL_WIDTH, 1);
+      setMapScale(initialScale); 
     }
   };
 
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 992);
-      updateMapScale();
     };
     window.addEventListener('resize', handleResize);
-    updateMapScale();
+    // Timeout per assicurarsi che il DOM sia renderizzato prima di misurare
+    setTimeout(updateMapScale, 100);
     return () => window.removeEventListener('resize', handleResize);
   }, [isLoggedIn, isFullscreen]);
 
@@ -106,30 +106,31 @@ export default function App() {
     }
   }, []);
 
-  // --- STILI DEI BOTTONI (La causa dello schermo bianco precedente!) ---
+  // STILI OTTIMIZZATI E SICURI
   const topBtnStyle = { 
     padding: isMobile ? '10px 14px' : '8px 12px', 
     borderRadius: '10px', 
     border: 'none', 
     fontWeight: 'bold', 
     fontSize: isMobile ? '14px' : '12px', 
-    cursor: 'pointer' 
+    cursor: 'pointer',
+    flex: isMobile ? '1 1 calc(33% - 10px)' : 'initial', // Su mobile si adattano a griglia
+    textAlign: 'center'
   };
 
   const mapBtnStyle = { 
-    padding: isMobile ? '12px 16px' : '8px 12px', 
+    padding: isMobile ? '10px 14px' : '8px 12px', 
     borderRadius: '12px', 
     border: 'none', 
     color: 'white', 
-    fontSize: isMobile ? '16px' : '14px', 
+    fontSize: isMobile ? '14px' : '13px', 
     fontWeight: 'bold', 
     cursor: 'pointer' 
   };
 
   const zoomBtnSize = isMobile ? '45px' : '35px';
-
   const zoomIn = () => setMapScale(prev => Math.min(prev + 0.1, 1.8));
-  const zoomOut = () => setMapScale(prev => Math.max(prev - 0.1, 0.15));
+  const zoomOut = () => setMapScale(prev => Math.max(prev - 0.1, 0.2));
 
   // REALTIME
   useEffect(() => {
@@ -232,7 +233,7 @@ export default function App() {
   }
   async function caricaTuttiITavoli() {
     let { data } = await supabase.from('tavoli').select('*');
-    if (data) { setTuttiITavoli(data); setTimeout(updateMapScale, 100); }
+    if (data) setTuttiITavoli(data);
   }
 
   async function salvaPrenotazione(e) {
@@ -251,9 +252,6 @@ export default function App() {
     if (!error) { 
         resetForm(); 
         aggiornaTutto(); 
-        setDataVista(formatData(new Date().toISOString()));
-        setServizioVista(new Date().getHours() < 16 ? 'pranzo' : 'cena');
-        setTimeout(scaricaAgendaFile, 1000); 
     }
   }
 
@@ -310,13 +308,11 @@ export default function App() {
   async function aggiungiTavolo() {
     await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: '?', capacita: 2, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
     await caricaTuttiITavoli(); 
-    esportaBackup(); 
   }
 
   async function aggiungiMuro() {
     await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_300x20', capacita: 0, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
     await caricaTuttiITavoli(); 
-    esportaBackup(); 
   }
 
   const aggiornaPosizioneLocale = (id, x, y) => { 
@@ -328,8 +324,7 @@ export default function App() {
     await Promise.all(promises);
     setIsEditMode(false);
     await caricaTuttiITavoli();
-    esportaBackup(); 
-    alert("📍 Posizioni salvate su Mappa Unica! Backup generato.");
+    alert("📍 Posizioni salvate su Mappa Unica!");
   }
 
   async function recuperaTavoli() {
@@ -376,7 +371,7 @@ export default function App() {
     } else { alert("Password errata!"); }
   };
 
-  const resetForm = () => { setEditingId(null); setNomeCliente(''); setNumeroPersone(''); setOraEsatta(''); setNote(''); setTavoliSelezionati([]); };
+  const resetForm = () => { setEditingId(null); setNomeCliente(''); setNumeroPersone(''); setOraEsatta(''); setNote(''); setTavoliSelezionati([]); setRicerca(''); };
 
   const ascoltaComando = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -449,12 +444,11 @@ export default function App() {
     setNomeCliente(nomeFinale || '');
     if (pax) setNumeroPersone(pax);
     if (ora && generaOrari().includes(ora)) setOraEsatta(ora); else if (ora) setOraEsatta(ora); 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const clickTavoloSfondo = (id) => {
     if (isEditMode) return;
-    if (oraEsatta) setTavoliSelezionati(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]);
+    if (oraEsatta) setTavoliSelezionati(prev => prev.includes(id) ? prev.filter(t => String(t) !== String(id)) : [...prev, id]);
     else setTavoloInfo(id);
   };
 
@@ -471,7 +465,6 @@ export default function App() {
   }
 
   const tuttiITavoliOrdinati = [...(tuttiITavoli || [])].filter(t => !String(t.numero_tavolo).startsWith('MURO')).sort((a, b) => parseInt(a.numero_tavolo) - parseInt(b.numero_tavolo));
-
   const prenotazioniDelServizio = prenotazioniAttive.filter(p => formatData(p.data_ora) === dataVista && getServizioDaOra(p.data_ora) === servizioVista);
   const totalePaxServizio = prenotazioniDelServizio.reduce((acc, p) => acc + (p.numero_persone || 0), 0);
   const risultatiRicerca = ricerca.length > 1 ? prenotazioniAttive.filter(p => p.nome_cliente && p.nome_cliente.toLowerCase().includes(ricerca.toLowerCase())) : [];
@@ -515,6 +508,10 @@ export default function App() {
 
   const SezioneForm = (
     <div style={{ background: 'white', padding: '15px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', flexShrink: 0 }}>
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
+        <h3 style={{margin: 0, fontSize: '16px', color: '#333'}}>Nuova Prenotazione</h3>
+        {editingId && <button onClick={resetForm} style={{padding: '5px 10px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '12px'}}>Annulla Modifica</button>}
+      </div>
       <form onSubmit={salvaPrenotazione} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <input type="text" placeholder="Nome Cliente" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} required style={{ padding: isMobile ? '16px' : '12px', borderRadius: '12px', border: '1px solid #ced4da', fontSize: isMobile ? '16px' : '15px' }} />
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -546,7 +543,9 @@ export default function App() {
               ))}
             </div>
         )}
-        <button type="submit" style={{ padding: '14px', background: '#1a73e8', color: 'white', borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}>💾 SALVA PRENOTAZIONE</button>
+        <button type="submit" style={{ padding: '14px', background: editingId ? '#ffc107' : '#1a73e8', color: editingId ? 'black' : 'white', borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}>
+            {editingId ? "💾 AGGIORNA PRENOTAZIONE" : "💾 SALVA PRENOTAZIONE"}
+        </button>
       </form>
     </div>
   );
@@ -572,132 +571,131 @@ export default function App() {
           )}
         </div>
         
-        {isMobile && (
-          <div style={{ display: 'flex', gap: '15px', alignItems: 'center', background: '#f8f9fa', padding: '5px 15px', borderRadius: '20px', border: '1px solid #ddd' }}>
-              <span style={{ fontSize: '14px', color: '#666', fontWeight: 'bold' }}>ZOOM:</span>
-              <button onClick={zoomOut} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: zoomBtnSize, height: zoomBtnSize, fontSize: '24px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>-</button>
-              <button onClick={zoomIn} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: zoomBtnSize, height: zoomBtnSize, fontSize: '24px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>+</button>
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', background: '#f8f9fa', padding: '5px 15px', borderRadius: '20px', border: '1px solid #ddd' }}>
+            <span style={{ fontSize: '14px', color: '#666', fontWeight: 'bold' }}>ZOOM:</span>
+            <button onClick={zoomOut} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: zoomBtnSize, height: zoomBtnSize, fontSize: '24px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>-</button>
+            <button onClick={zoomIn} style={{ background: 'white', border: '1px solid #ccc', borderRadius: '50%', width: zoomBtnSize, height: zoomBtnSize, fontSize: '24px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>+</button>
+        </div>
       </div>
 
       {isAdmin && isEditMode && (
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingBottom: '5px', flexShrink: 0 }}>
             <button onClick={aggiungiTavolo} style={{ ...topBtnStyle, background: '#0d6efd', color: 'white' }}>➕ Tavolo</button>
             <button onClick={aggiungiMuro} style={{ ...topBtnStyle, background: '#495057', color: 'white' }}>🧱 Muro</button>
-            <button onClick={salvaCorrente} style={{ ...topBtnStyle, background: '#28a745', color: 'white' }}>📍 Salva</button>
+            <button onClick={salvaCorrente} style={{ ...topBtnStyle, background: '#28a745', color: 'white' }}>📍 Salva Posizioni</button>
             <button onClick={impostaStandard} style={{ ...topBtnStyle, background: '#f3e8ff', color: '#6f42c1' }}>⭐ Set Std</button>
             <button onClick={ripristinaStandard} style={{ ...topBtnStyle, background: '#fff8e1', color: '#d39e00' }}>🔄 R. Std</button>
-            <button onClick={recuperaTavoli} style={{ ...topBtnStyle, background: '#ffc107', color: 'black' }}>🧲 Recupera Tavoli</button>
+            <button onClick={recuperaTavoli} style={{ ...topBtnStyle, background: '#ffc107', color: 'black' }}>🧲 Recupera</button>
             <button onClick={esportaBackup} style={{ ...topBtnStyle, background: '#343a40', color: 'white' }}>💾 Backup</button>
             <button onClick={() => { if(fileInputRef.current) fileInputRef.current.click() }} style={{ ...topBtnStyle, background: '#e83e8c', color: 'white' }}>📂 Ripristina</button>
         </div>
       )}
 
-      <div 
-        ref={mapContainerRef}
-        style={{ flex: 1, minHeight: isMobile ? '65vh' : '65vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative' }}
-      >
-        <div style={{ width: `${VIRTUAL_WIDTH}px`, height: `${VIRTUAL_HEIGHT}px`, position: 'relative', transform: `scale(${mapScale})`, transformOrigin: 'top left' }}>
-          
-          {!isEditMode && mergedReservations.map(p => {
-             const assignedTables = tuttiITavoli.filter(t => (p.tavoli_assegnati || []).some(tid => String(tid) === String(t.id)) && !String(t.numero_tavolo).startsWith('MURO'));
-             if (assignedTables.length < 2) return null;
-             
-             const minX = Math.min(...assignedTables.map(t => Number(t.pos_x) || 0));
-             const minY = Math.min(...assignedTables.map(t => Number(t.pos_y) || 0));
-             const maxX = Math.max(...assignedTables.map(t => Number(t.pos_x) || 0));
-             const maxY = Math.max(...assignedTables.map(t => Number(t.pos_y) || 0));
-             const width = (maxX - minX) + 90; 
-             const height = (maxY - minY) + 90;
-
-             let bgCol = '#fd7e14'; let bCol = '#d35400';
-             if (p.presente) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
-
-             return (
-               <div key={`mega-${p.id}`}
-                    onClick={(e) => { e.stopPropagation(); setTavoloInfo(assignedTables[0].id); }}
-                    style={{ position: 'absolute', top: minY, left: minX, width: width, height: height, background: bgCol, border: `4px solid ${bCol}`, borderRadius: '15px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, opacity: 0.95, boxShadow: '0px 10px 20px rgba(0,0,0,0.2)' }}>
-                  <strong style={{ fontSize: '20px', marginBottom: '8px', color: '#333' }}>Tav. {assignedTables.map(t => t.numero_tavolo).join(' + ')}</strong>
-                  <div style={{ fontSize: '14px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '6px 12px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold' }}>
-                      {formatOra(p.data_ora)} - {p.nome_cliente} <br/> ({p.numero_persone}p)
-                  </div>
-               </div>
-             )
-          })}
-
-          {tuttiITavoli.map(t => {
-            const isMuro = String(t.numero_tavolo).startsWith('MURO');
-            const isMergedHidden = !isEditMode && mergedTableIds.has(String(t.id)) && !isMuro;
-
-            if (isMergedHidden) return null;
-
-            if (isMuro) {
-               let w = 150, h = 20;
-               const match = String(t.numero_tavolo).match(/MURO_(\d+)x(\d+)/i);
-               if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
+      {/* RISOLTO IL BUG DELLA SCROLLBAR: Doppio wrapper per calcolare l'area di trasformazione corretta */}
+      <div ref={mapContainerRef} style={{ flex: 1, minHeight: isMobile ? '55vh' : 'auto', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative' }}>
+        <div style={{ width: VIRTUAL_WIDTH * mapScale, height: VIRTUAL_HEIGHT * mapScale }}>
+          <div style={{ width: `${VIRTUAL_WIDTH}px`, height: `${VIRTUAL_HEIGHT}px`, transform: `scale(${mapScale})`, transformOrigin: 'top left', position: 'relative' }}>
+            
+            {!isEditMode && mergedReservations.map(p => {
+               const assignedTables = tuttiITavoli.filter(t => (p.tavoli_assegnati || []).some(tid => String(tid) === String(t.id)) && !String(t.numero_tavolo).startsWith('MURO'));
+               if (assignedTables.length < 2) return null;
                
+               const minX = Math.min(...assignedTables.map(t => Number(t.pos_x) || 0));
+               const minY = Math.min(...assignedTables.map(t => Number(t.pos_y) || 0));
+               const maxX = Math.max(...assignedTables.map(t => Number(t.pos_x) || 0));
+               const maxY = Math.max(...assignedTables.map(t => Number(t.pos_y) || 0));
+               const width = (maxX - minX) + 90; 
+               const height = (maxY - minY) + 90;
+
+               let bgCol = '#fd7e14'; let bCol = '#d35400';
+               if (p.presente) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
+
                return (
-                 <Draggable 
-                    key={t.id} 
-                    disabled={!isEditMode} 
-                    scale={mapScale} 
-                    bounds="parent"
-                    position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} 
-                    onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}
-                 >
-                   <div style={{ position: 'absolute', top: 0, left: 0, width: `${w}px`, height: `${h}px`, backgroundColor: '#495057', borderRadius: '6px', cursor: isEditMode ? 'move' : 'default', zIndex: 1, border: '1px solid #343a40' }}>
-                     {isAdmin && isEditMode && (
-                        <>
-                          <button onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); e.preventDefault(); modificaInfoTavolo(t); }} style={{ position: 'absolute', top: '-15px', left: '-15px', background: '#f8f9fa', color: '#0d6efd', border: '2px solid #0d6efd', borderRadius: '50%', width: '30px', height: '30px', fontSize: '14px', zIndex: 10 }}>⚙️</button>
-                          <button onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onClick={async e => { e.stopPropagation(); e.preventDefault(); if(window.confirm("Eliminare muro?")) { await supabase.from('tavoli').delete().eq('id', t.id); aggiornaTutto(); } }} style={{ position: 'absolute', top: '-15px', right: '-15px', background: '#dc3545', color: 'white', border: '2px solid white', borderRadius: '50%', width: '30px', height: '30px', fontSize: '14px', zIndex: 10 }}>✖</button>
-                        </>
-                     )}
+                 <div key={`mega-${p.id}`}
+                      onClick={(e) => { e.stopPropagation(); setTavoloInfo(assignedTables[0].id); }}
+                      style={{ position: 'absolute', top: minY, left: minX, width: width, height: height, background: bgCol, border: `4px solid ${bCol}`, borderRadius: '15px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, opacity: 0.95, boxShadow: '0px 10px 20px rgba(0,0,0,0.2)' }}>
+                   <strong style={{ fontSize: '20px', marginBottom: '8px', color: '#333' }}>Tav. {assignedTables.map(t => t.numero_tavolo).join(' + ')}</strong>
+                   <div style={{ fontSize: '14px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '6px 12px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold' }}>
+                       {formatOra(p.data_ora)} - {p.nome_cliente} <br/> ({p.numero_persone}p)
                    </div>
-                 </Draggable>
-               );
-            }
+                 </div>
+               )
+            })}
 
-            const pres = getPrenotazioniTurno(t.id);
-            const sel = tavoliSelezionati.includes(t.id);
-            let bgCol = 'white'; let bCol = '#adb5bd';
-            if (sel) { bgCol = '#cfe2ff'; bCol = '#0d6efd'; } 
-            else if (pres.length > 1) { bgCol = '#dc3545'; bCol = '#a71d2a'; } 
-            else if (pres.some(p => p.presente)) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
-            else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
+            {tuttiITavoli.map(t => {
+              const isMuro = String(t.numero_tavolo).startsWith('MURO');
+              const isMergedHidden = !isEditMode && mergedTableIds.has(String(t.id)) && !isMuro;
 
-            return (
-              <Draggable 
-                 key={t.id} 
-                 disabled={!isEditMode} 
-                 scale={mapScale} 
-                 bounds="parent"
-                 position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} 
-                 onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}
-              >
-                <div onClick={(e) => { e.stopPropagation(); if (!isEditMode) clickTavoloSfondo(t.id); }}
-                     onMouseDown={(e) => { if(isEditMode) e.stopPropagation(); }}
-                     style={{ position: 'absolute', top: 0, left: 0, width: '90px', height: '90px', borderRadius: '15px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none', zIndex: 5 }}>
-                  
-                  {isAdmin && isEditMode && (
-                    <>
-                      <button onMouseDown={(e) => { e.stopPropagation(); }} onTouchStart={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); e.preventDefault(); modificaInfoTavolo(t); }} style={{ position: 'absolute', top: '-18px', left: '-18px', zIndex: 9999, background: '#f8f9fa', color: '#0d6efd', border: '2px solid #0d6efd', borderRadius: '50%', width: '30px', height: '30px', fontSize: '15px', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚙️</button>
-                      <button onMouseDown={(e) => { e.stopPropagation(); }} onTouchStart={(e) => { e.stopPropagation(); }} onClick={async (e) => { e.stopPropagation(); e.preventDefault(); if(window.confirm("Eliminare definitivamente il tavolo?")) { await supabase.from('tavoli').delete().eq('id', t.id); aggiornaTutto(); } }} style={{ position: 'absolute', top: '-18px', right: '-18px', zIndex: 9999, background: '#dc3545', color: 'white', border: '2px solid white', borderRadius: '50%', width: '30px', height: '30px', fontSize: '15px', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✖</button>
-                    </>
-                  )}
+              if (isMergedHidden) return null;
 
-                  <strong style={{ fontSize: `${dimensioneTestoTavolo}px`, marginBottom: '2px', color: (bgCol === '#dc3545') ? 'white' : '#333' }}>{t.numero_tavolo}</strong>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '95%' }}>
-                    {pres.map(p => (
-                      <div key={p.id} onClick={(e) => { e.stopPropagation(); if(!isEditMode) setTavoloInfo(t.id); }} style={{ fontSize: `10px`, background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '2px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: p.presente ? '1px solid white' : 'none', lineHeight: '1.2' }}>
-                        {formatOra(p.data_ora)} - {p.nome_cliente}
-                      </div>
-                    ))}
+              if (isMuro) {
+                 let w = 150, h = 20;
+                 const match = String(t.numero_tavolo).match(/MURO_(\d+)x(\d+)/i);
+                 if (match) { w = parseInt(match[1]); h = parseInt(match[2]); }
+                 
+                 return (
+                   <Draggable 
+                      key={t.id} 
+                      disabled={!isEditMode} 
+                      scale={mapScale} 
+                      bounds="parent"
+                      position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} 
+                      onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}
+                   >
+                     <div style={{ position: 'absolute', top: 0, left: 0, width: `${w}px`, height: `${h}px`, backgroundColor: '#495057', borderRadius: '6px', cursor: isEditMode ? 'move' : 'default', zIndex: 1, border: '1px solid #343a40' }}>
+                       {isAdmin && isEditMode && (
+                          <>
+                            <button onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); e.preventDefault(); modificaInfoTavolo(t); }} style={{ position: 'absolute', top: '-15px', left: '-15px', background: '#f8f9fa', color: '#0d6efd', border: '2px solid #0d6efd', borderRadius: '50%', width: '30px', height: '30px', fontSize: '14px', zIndex: 10 }}>⚙️</button>
+                            <button onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onClick={async e => { e.stopPropagation(); e.preventDefault(); if(window.confirm("Eliminare muro?")) { await supabase.from('tavoli').delete().eq('id', t.id); aggiornaTutto(); } }} style={{ position: 'absolute', top: '-15px', right: '-15px', background: '#dc3545', color: 'white', border: '2px solid white', borderRadius: '50%', width: '30px', height: '30px', fontSize: '14px', zIndex: 10 }}>✖</button>
+                          </>
+                       )}
+                     </div>
+                   </Draggable>
+                 );
+              }
+
+              const pres = getPrenotazioniTurno(t.id);
+              const sel = tavoliSelezionati.includes(t.id);
+              let bgCol = 'white'; let bCol = '#adb5bd';
+              if (sel) { bgCol = '#cfe2ff'; bCol = '#0d6efd'; } 
+              else if (pres.length > 1) { bgCol = '#dc3545'; bCol = '#a71d2a'; } 
+              else if (pres.some(p => p.presente)) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
+              else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
+
+              return (
+                <Draggable 
+                   key={t.id} 
+                   disabled={!isEditMode} 
+                   scale={mapScale} 
+                   bounds="parent"
+                   position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} 
+                   onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}
+                >
+                  <div onClick={(e) => { e.stopPropagation(); if (!isEditMode) clickTavoloSfondo(t.id); }}
+                       onMouseDown={(e) => { if(isEditMode) e.stopPropagation(); }}
+                       onTouchStart={(e) => { if(isEditMode) e.stopPropagation(); }}
+                       style={{ position: 'absolute', top: 0, left: 0, width: '90px', height: '90px', borderRadius: '15px', background: bgCol, border: `3px solid ${bCol}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isEditMode ? 'move' : 'pointer', touchAction: 'none', zIndex: 5 }}>
+                    
+                    {isAdmin && isEditMode && (
+                      <>
+                        <button onMouseDown={(e) => { e.stopPropagation(); }} onTouchStart={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); e.preventDefault(); modificaInfoTavolo(t); }} style={{ position: 'absolute', top: '-18px', left: '-18px', zIndex: 9999, background: '#f8f9fa', color: '#0d6efd', border: '2px solid #0d6efd', borderRadius: '50%', width: '30px', height: '30px', fontSize: '15px', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚙️</button>
+                        <button onMouseDown={(e) => { e.stopPropagation(); }} onTouchStart={(e) => { e.stopPropagation(); }} onClick={async (e) => { e.stopPropagation(); e.preventDefault(); if(window.confirm("Eliminare definitivamente il tavolo?")) { await supabase.from('tavoli').delete().eq('id', t.id); aggiornaTutto(); } }} style={{ position: 'absolute', top: '-18px', right: '-18px', zIndex: 9999, background: '#dc3545', color: 'white', border: '2px solid white', borderRadius: '50%', width: '30px', height: '30px', fontSize: '15px', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✖</button>
+                      </>
+                    )}
+
+                    <strong style={{ fontSize: `${dimensioneTestoTavolo}px`, marginBottom: '2px', color: (bgCol === '#dc3545') ? 'white' : '#333' }}>{t.numero_tavolo}</strong>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '95%' }}>
+                      {pres.map(p => (
+                        <div key={p.id} onClick={(e) => { e.stopPropagation(); if(!isEditMode) setTavoloInfo(t.id); }} style={{ fontSize: `10px`, background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '2px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: p.presente ? '1px solid white' : 'none', lineHeight: '1.2' }}>
+                          {formatOra(p.data_ora)} - {p.nome_cliente}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </Draggable>
-            );
-          })}
+                </Draggable>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -705,7 +703,7 @@ export default function App() {
 
   const SezioneAgenda = (
     <div style={{ background: 'white', padding: '15px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: isMobile ? '100px' : '0' }}>
-      <input type="text" placeholder="🔍 Ricerca cliente..." value={ricerca} onChange={e => setRicerca(e.target.value)} style={{ padding: '10px', borderRadius: '10px', border: '1px solid #ced4da', fontSize: '14px', width: '100%', boxSizing: 'border-box', marginBottom: '10px' }} />
+      <input type="text" placeholder="🔍 Ricerca cliente..." value={ricerca} onChange={e => setRicerca(e.target.value)} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #ced4da', fontSize: '15px', width: '100%', boxSizing: 'border-box', marginBottom: '15px' }} />
       
       {ricerca.length > 1 ? (
         <div>
@@ -763,7 +761,7 @@ export default function App() {
                         <button onClick={() => setPrenoInSpostamento(p.id)} style={{ border: 'none', background: '#fd7e14', color: 'white', padding: '6px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>🔄</button>
                       )}
                       
-                      <button onClick={() => { setEditingId(p.id); setNomeCliente(p.nome_cliente); setNumeroPersone(p.numero_persone); setOraEsatta(formatOra(p.data_ora)); setNote(p.note || ''); setTavoliSelezionati(p.tavoli_assegnati || []); window.scrollTo(0,0); setIsFullscreen(false); }} style={{ border: 'none', background: '#e7f1ff', padding: '6px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>✏️</button>
+                      <button onClick={() => { setEditingId(p.id); setNomeCliente(p.nome_cliente); setNumeroPersone(p.numero_persone); setOraEsatta(formatOra(p.data_ora)); setNote(p.note || ''); setTavoliSelezionati(p.tavoli_assegnati || []); window.scrollTo(0,0); }} style={{ border: 'none', background: '#e7f1ff', padding: '6px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>✏️</button>
                       {isAdmin && (
                         <button onClick={() => cestinaPrenotazione(p.id)} style={{ border: 'none', background: '#fff0f0', padding: '6px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>🗑️</button>
                       )}
@@ -787,7 +785,7 @@ export default function App() {
       <div style={{ background: 'white', padding: '12px 15px', borderRadius: '16px', marginBottom: '10px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           
-          <img src="/logo.png" alt="Belvedere" style={{ height: isMobile ? '55px' : '65px', objectFit: 'contain' }} />
+          <img src="/logo.png" alt="Belvedere" style={{ height: isMobile ? '40px' : '55px', objectFit: 'contain' }} />
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
              {isAdmin && <button onClick={() => setShowStatistiche(true)} style={{ ...topBtnStyle, background: '#6c757d', color: 'white' }}>📈 Statistiche</button>}
@@ -816,8 +814,15 @@ export default function App() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'row', gap: '15px', flexGrow: 1, overflow: 'hidden' }}>
-          <div style={{ flex: '0 0 30%', display: 'flex', flexDirection: 'column', gap: '10px', height: '100%', overflowY: 'auto', paddingRight: '5px' }}>{SezioneForm}{SezioneAgenda}</div>
-          <div style={{ flex: '1', display: 'flex', flexDirection: 'column', height: '100%' }}>{!isFullscreen && SezioneMappa}</div>
+          {/* COLONNA SINISTRA PC (Form + Agenda) con scrolling indipendente */}
+          <div style={{ flex: '0 0 32%', display: 'flex', flexDirection: 'column', gap: '10px', height: '100%', overflowY: 'auto', paddingRight: '5px' }}>
+             {SezioneForm}
+             {SezioneAgenda}
+          </div>
+          {/* COLONNA DESTRA PC (Mappa) bloccata e scrollabile all'interno */}
+          <div style={{ flex: '1', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+             {!isFullscreen && SezioneMappa}
+          </div>
         </div>
       )}
       
@@ -986,7 +991,9 @@ export default function App() {
 
       {/* PULSANTONE FLUTTUANTE SOLO SU MOBILE E NON IN FULLSCREEN */}
       {isMobile && nomeCliente && oraEsatta && tavoliSelezionati.length > 0 && !isEditMode && !isFullscreen && (
-        <button onClick={salvaPrenotazione} style={{ position: 'fixed', bottom: '25px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000, background: '#28a745', color: 'white', padding: '18px 0', borderRadius: '50px', border: 'none', fontWeight: 'bold', fontSize: '18px', width: '90%', boxShadow: '0 8px 25px rgba(40, 167, 69, 0.4)', cursor: 'pointer' }}>💾 CONFERMA PRENOTAZIONE</button>
+        <button onClick={salvaPrenotazione} style={{ position: 'fixed', bottom: '25px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000, background: editingId ? '#ffc107' : '#28a745', color: editingId ? 'black' : 'white', padding: '18px 0', borderRadius: '50px', border: 'none', fontWeight: 'bold', fontSize: '18px', width: '90%', boxShadow: '0 8px 25px rgba(0,0,0,0.3)', cursor: 'pointer' }}>
+            {editingId ? "💾 AGGIORNA PRENOTAZIONE" : "💾 CONFERMA PRENOTAZIONE"}
+        </button>
       )}
     </div>
   );
