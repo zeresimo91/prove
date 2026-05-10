@@ -83,9 +83,7 @@ export default function App() {
       const { clientWidth, clientHeight } = mapContainerRef.current;
       const scaleX = clientWidth / VIRTUAL_WIDTH;
       const scaleY = clientHeight / VIRTUAL_HEIGHT;
-      // Sul mobile prediligiamo che si adatti in larghezza per non farlo diventare troppo piccolo
-      const finalScale = isMobile ? scaleX : Math.min(scaleX, scaleY, 1.5);
-      setMapScale(finalScale); 
+      setMapScale(Math.min(scaleX, scaleY, 1.5)); 
     }
   };
 
@@ -97,7 +95,7 @@ export default function App() {
     window.addEventListener('resize', handleResize);
     updateMapScale();
     return () => window.removeEventListener('resize', handleResize);
-  }, [isLoggedIn, isFullscreen, isMobile]);
+  }, [isLoggedIn, isFullscreen]);
 
   useEffect(() => {
     const savedLogin = localStorage.getItem('belvedere_logged_in');
@@ -108,7 +106,28 @@ export default function App() {
     }
   }, []);
 
-  // Zoom manuale
+  // --- STILI DEI BOTTONI (La causa dello schermo bianco precedente!) ---
+  const topBtnStyle = { 
+    padding: isMobile ? '10px 14px' : '8px 12px', 
+    borderRadius: '10px', 
+    border: 'none', 
+    fontWeight: 'bold', 
+    fontSize: isMobile ? '14px' : '12px', 
+    cursor: 'pointer' 
+  };
+
+  const mapBtnStyle = { 
+    padding: isMobile ? '12px 16px' : '8px 12px', 
+    borderRadius: '12px', 
+    border: 'none', 
+    color: 'white', 
+    fontSize: isMobile ? '16px' : '14px', 
+    fontWeight: 'bold', 
+    cursor: 'pointer' 
+  };
+
+  const zoomBtnSize = isMobile ? '45px' : '35px';
+
   const zoomIn = () => setMapScale(prev => Math.min(prev + 0.1, 1.8));
   const zoomOut = () => setMapScale(prev => Math.max(prev - 0.1, 0.15));
 
@@ -478,28 +497,6 @@ export default function App() {
   };
   const stats = showStatistiche ? calcolaStatistiche() : null;
 
-  // STILI DINAMICI PER MOBILE vs PC (Tasti più grandi su Touch)
-  const topBtnStyle = { 
-    padding: isMobile ? '10px 14px' : '8px 12px', 
-    borderRadius: '10px', 
-    border: 'none', 
-    fontWeight: 'bold', 
-    fontSize: isMobile ? '14px' : '12px', 
-    cursor: 'pointer' 
-  };
-
-  const mapBtnStyle = { 
-    padding: isMobile ? '12px 16px' : '8px 12px', 
-    borderRadius: '12px', 
-    border: 'none', 
-    color: 'white', 
-    fontSize: isMobile ? '16px' : '14px', 
-    fontWeight: 'bold', 
-    cursor: 'pointer' 
-  };
-
-  const zoomBtnSize = isMobile ? '45px' : '35px';
-
   if (!isLoggedIn) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f4f6f8' }}>
@@ -565,7 +562,7 @@ export default function App() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '10px 15px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', gap: '10px', flexWrap: 'wrap', flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button onClick={() => setIsFullscreen(!isFullscreen)} style={{ ...mapBtnStyle, background: '#1a73e8' }}>
-            {isFullscreen ? "❌ Chiudi Schermo" : "🖥️ Schermo Intero"}
+            {isFullscreen ? "❌ Chiudi Schermo Intero" : "🖥️ Schermo Intero"}
           </button>
           
           {isAdmin && (
@@ -575,7 +572,6 @@ export default function App() {
           )}
         </div>
         
-        {/* COMANDI ZOOM MANUALI GRANDI PER TOUCH (PIÙ GRANDI SU MOBILE) */}
         {isMobile && (
           <div style={{ display: 'flex', gap: '15px', alignItems: 'center', background: '#f8f9fa', padding: '5px 15px', borderRadius: '20px', border: '1px solid #ddd' }}>
               <span style={{ fontSize: '14px', color: '#666', fontWeight: 'bold' }}>ZOOM:</span>
@@ -598,7 +594,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MAPPA SCROLLABILE (OVERFLOW AUTO) */}
       <div 
         ref={mapContainerRef}
         style={{ flex: 1, minHeight: isMobile ? '65vh' : '65vh', backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative' }}
