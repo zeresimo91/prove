@@ -104,7 +104,6 @@ export default function App() {
     }
   }, []);
 
-  // STILI OTTIMIZZATI PER MOBILE E PC
   const topBtnStyle = { 
     padding: '10px 16px', 
     borderRadius: '10px', 
@@ -112,8 +111,8 @@ export default function App() {
     fontWeight: 'bold', 
     fontSize: '13px', 
     cursor: 'pointer',
-    whiteSpace: 'nowrap', // Impedisce al testo di andare a capo su mobile
-    flexShrink: 0 // Impedisce ai bottoni di schiacciarsi
+    whiteSpace: 'nowrap', 
+    flexShrink: 0 
   };
 
   const mapBtnStyle = { 
@@ -326,7 +325,6 @@ export default function App() {
     alert("📍 Posizioni salvate su Mappa Unica!");
   }
 
-  // === NUOVA FUNZIONE PER SPOSTARE TUTTO A DESTRA ===
   async function spostaTuttoADestra() {
     if (!window.confirm("Vuoi spostare TUTTI i tavoli e muri a destra di 150 pixel?")) return;
     const promises = tuttiITavoli.map(t => supabase.from('tavoli').update({ pos_x: Number(t.pos_x) + 150 }).eq('id', t.id));
@@ -565,10 +563,11 @@ export default function App() {
       position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999, 
       backgroundColor: '#f4f6f8', padding: '10px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: '10px'
     } : { 
-      display: 'flex', flexDirection: 'column', gap: '10px', height: isMobile ? '400px' : '100%', position: 'relative' 
+      // MODIFICATO QUI: minHeight a 60vh per mobile garantisce ampio spazio per la mappa senza schiacciarla
+      display: 'flex', flexDirection: 'column', gap: '10px', minHeight: isMobile ? '60vh' : '100%', position: 'relative', flexShrink: 0 
     }}>
       
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '8px 12px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', flexWrap: 'wrap', gap: '8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '8px 12px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', flexWrap: 'wrap', gap: '8px', flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? 'space-between' : 'flex-start' }}>
           <button onClick={() => setIsFullscreen(!isFullscreen)} style={{ ...mapBtnStyle, background: '#1a73e8', flex: isMobile ? '1' : 'none' }}>
             {isFullscreen ? "❌ Chiudi" : "🖥️ Espandi"}
@@ -589,7 +588,7 @@ export default function App() {
       </div>
 
       {isAdmin && isEditMode && (
-        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '5px', whiteSpace: 'nowrap' }}>
+        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '5px', whiteSpace: 'nowrap', flexShrink: 0 }}>
             <button onClick={aggiungiTavolo} style={{ ...topBtnStyle, background: '#0d6efd', color: 'white' }}>➕ Tavolo</button>
             <button onClick={aggiungiMuro} style={{ ...topBtnStyle, background: '#495057', color: 'white' }}>🧱 Muro</button>
             <button onClick={salvaCorrente} style={{ ...topBtnStyle, background: '#28a745', color: 'white' }}>📍 Salva Posizioni</button>
