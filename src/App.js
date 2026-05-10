@@ -207,12 +207,12 @@ export default function App() {
       try {
         const backupData = JSON.parse(event.target.result);
         if (!backupData.tavoli || !backupData.prenotazioni) throw new Error("File non valido");
-        if (!window.confirm("⚠️ ATTENZIONE: Questo ripristinerà TAVOLI e PRENOTAZIONI. Procedo?")) { e.target.value = ""; return; }
+        if (!window.confirm("⚠️ ATTENZIONE: Questo ripristinerà TAVOLI e PRENOTAZIONI dal file caricato. Procedo?")) { e.target.value = ""; return; }
         if (backupData.tavoli.length > 0) await supabase.from('tavoli').upsert(backupData.tavoli);
         if (backupData.prenotazioni.length > 0) await supabase.from('prenotazioni').upsert(backupData.prenotazioni);
-        alert("✅ Ripristino Totale completato!");
+        alert("✅ Ripristino Totale completato con successo!");
         aggiornaTutto();
-      } catch (err) { alert("Errore nel ripristino. File non valido."); }
+      } catch (err) { alert("Errore nel ripristino. File non valido o corrotto."); }
       e.target.value = ""; 
     };
     reader.readAsText(file);
@@ -563,7 +563,6 @@ export default function App() {
       position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999, 
       backgroundColor: '#f4f6f8', padding: '10px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: '10px'
     } : { 
-      // MODIFICATO QUI: minHeight a 60vh per mobile garantisce ampio spazio per la mappa senza schiacciarla
       display: 'flex', flexDirection: 'column', gap: '10px', minHeight: isMobile ? '60vh' : '100%', position: 'relative', flexShrink: 0 
     }}>
       
@@ -599,7 +598,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Contenitore Mappa: overflow auto permette di muoversi sulla mappa su mobile senza rimanere bloccati */}
       <div ref={mapContainerRef} style={{ flex: 1, backgroundColor: '#e9ecef', borderRadius: '16px', border: '2px solid #dee2e6', overflow: 'auto', position: 'relative' }}>
         <div style={{ width: VIRTUAL_WIDTH * mapScale, height: VIRTUAL_HEIGHT * mapScale }}>
           <div style={{ width: `${VIRTUAL_WIDTH}px`, height: `${VIRTUAL_HEIGHT}px`, transform: `scale(${mapScale})`, transformOrigin: 'top left', position: 'relative' }}>
@@ -786,6 +784,8 @@ export default function App() {
           <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', flexGrow: 1, WebkitOverflowScrolling: 'touch' }}>
              {isAdmin && <button onClick={() => setShowStatistiche(true)} style={{ ...topBtnStyle, background: '#6c757d', color: 'white' }}>📈 Statistiche</button>}
              {isAdmin && <button onClick={() => setShowCestino(true)} style={{ ...topBtnStyle, background: '#343a40', color: 'white' }}>🗑️ Cestino</button>}
+             {isAdmin && <button onClick={esportaBackup} style={{ ...topBtnStyle, background: '#17a2b8', color: 'white' }}>💾 Backup DB</button>}
+             {isAdmin && <button onClick={() => { if(fileInputRef.current) fileInputRef.current.click() }} style={{ ...topBtnStyle, background: '#e83e8c', color: 'white' }}>📂 Carica DB</button>}
              <button onClick={() => setShowDisponibilita(true)} style={{ ...topBtnStyle, background: '#17a2b8', color: 'white', boxShadow: '0 2px 5px rgba(23,162,184,0.3)' }}>📊 Disponibilità</button>
              <button onClick={ascoltaComando} style={{ ...topBtnStyle, background: isListening ? '#dc3545' : '#6f42c1', color: 'white', boxShadow: isListening ? '0 0 10px #dc3545' : 'none' }}>{isListening ? '🎙️ Ascolta...' : '🎤 Voce'}</button>
              {isAdmin && <button onClick={scaricaAgendaFile} style={{ ...topBtnStyle, background: '#e7f1ff', color: '#0d6efd' }}>📥 AGENDA</button>}
