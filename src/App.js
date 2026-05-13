@@ -60,7 +60,9 @@ export default function App() {
   const [showDisponibilita, setShowDisponibilita] = useState(false);
   const [showStatistiche, setShowStatistiche] = useState(false);
   const [showCestino, setShowCestino] = useState(false);
+  
   const [showUltime10, setShowUltime10] = useState(false);
+  const [ultime10, setUltime10] = useState([]); // NUOVO STATO DEDICATO
   const [nuoveNotifiche, setNuoveNotifiche] = useState([]);
 
   const fileInputRef = useRef(null);
@@ -162,16 +164,22 @@ export default function App() {
     setNuoveNotifiche(prev => prev.filter(n => n.id !== id));
   };
 
-  // --- ULTIME 10 PRENOTAZIONI (Corretto per UUID) ---
-  const getUltime10 = () => {
-    return [...prenotazioni]
-      .filter(p => !p.eliminata)
-      .sort((a, b) => {
-         const dataCreazioneA = a.created_at ? new Date(a.created_at).getTime() : 0;
-         const dataCreazioneB = b.created_at ? new Date(b.created_at).getTime() : 0;
-         return dataCreazioneB - dataCreazioneA;
-      })
-      .slice(0, 10);
+  // --- NUOVA FUNZIONE INFALLIBILE PER LE ULTIME 10 ---
+  const apriUltime10 = async () => {
+    // Chiediamo direttamente al database di darci le ultime 10 create, ordinandole per la data di creazione
+    const { data, error } = await supabase
+      .from('prenotazioni')
+      .select('*')
+      .eq('eliminata', false)
+      .order('created_at', { ascending: false })
+      .limit(10);
+      
+    if (error) {
+      alert("ATTENZIONE: Si è verificato un errore, probabile che manchi la colonna 'created_at' nel tuo database Supabase!");
+    } else {
+      setUltime10(data || []);
+      setShowUltime10(true);
+    }
   };
 
   const getPrenotazioniTurno = (tavoloId) => {
@@ -498,6 +506,7 @@ export default function App() {
     if (n && p) { await supabase.from('tavoli').update({ numero_tavolo: n, capacita: parseInt(p) }).eq('id', t.id); aggiornaTutto(); }
   }
 
+  // --- FILTRI E VARIABILI VISTA ---
   const tuttiITavoliOrdinati = [...(tuttiITavoli || [])].filter(t => !String(t.numero_tavolo).startsWith('MURO')).sort((a, b) => parseInt(a.numero_tavolo) - parseInt(b.numero_tavolo));
   const prenotazioniDelServizio = prenotazioniAttive.filter(p => formatData(p.data_ora) === dataVista && getServizioDaOra(p.data_ora) === servizioVista);
   const totalePaxServizio = prenotazioniDelServizio.reduce((acc, p) => acc + (p.numero_persone || 0), 0);
@@ -524,6 +533,7 @@ export default function App() {
   };
   const stats = showStatistiche ? calcolaStatistiche() : null;
 
+  // === RENDER SCHERMATA DI LOGIN ===
   if (!isLoggedIn) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f4f6f8' }}>
@@ -540,7 +550,7 @@ export default function App() {
     );
   }
 
-  // COMPONENTI UI
+  // === RENDER SEZIONE FORM NUOVA PRENOTAZIONE ===
   const SezioneForm = (
     <div style={{ background: 'white', padding: '15px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', flexShrink: 0 }}>
       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
@@ -586,6 +596,7 @@ export default function App() {
     </div>
   );
 
+  // === RENDER SEZIONE MAPPA TAVOLI ===
   const SezioneMappa = (
     <div style={isFullscreen ? {
       position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999, 
@@ -750,6 +761,7 @@ export default function App() {
     </div>
   );
 
+  // === RENDER SEZIONE AGENDA ===
   const SezioneAgenda = (
     <div style={{ background: 'white', padding: '15px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: isMobile ? '100px' : '0' }}>
       <input type="text" placeholder="🔍 Ricerca cliente..." value={ricerca} onChange={e => setRicerca(e.target.value)} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #ced4da', fontSize: '15px', width: '100%', boxSizing: 'border-box', marginBottom: '15px' }} />
@@ -825,6 +837,7 @@ export default function App() {
     </div>
   );
 
+  // === STRUTTURA PRINCIPALE (LAYOUT) ===
   return (
     <div style={{ backgroundColor: '#f4f6f8', height: '100vh', padding: '10px', boxSizing: 'border-box', fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       
@@ -870,7 +883,7 @@ export default function App() {
              <button onClick={() => setShowDisponibilita(true)} style={{ ...topBtnStyle, background: '#17a2b8', color: 'white', boxShadow: '0 2px 5px rgba(23,162,184,0.3)' }}>📊 Disponibilità</button>
              
              {/* BOTTONE ULTIME 10 */}
-             {isAdmin && <button onClick={() => setShowUltime10(true)} style={{ ...topBtnStyle, background: '#6f42c1', color: 'white' }}>🕒 Ultime 10</button>}
+             {isAdmin && <button onClick={apriUltime10} style={{ ...topBtnStyle, background: '#6f42c1', color: 'white' }}>🕒 Ultime 10</button>}
 
              <button onClick={ascoltaComando} style={{ ...topBtnStyle, background: isListening ? '#dc3545' : '#6f42c1', color: 'white', boxShadow: isListening ? '0 0 10px #dc3545' : 'none' }}>{isListening ? '🎙️ Ascolta...' : '🎤 Voce'}</button>
              {isAdmin && <button onClick={scaricaAgendaFile} style={{ ...topBtnStyle, background: '#e7f1ff', color: '#0d6efd' }}>📥 AGENDA</button>}
@@ -1021,7 +1034,7 @@ export default function App() {
             </div>
             
             <div style={{ overflowY: 'auto', flexGrow: 1, paddingRight: '10px' }}>
-              {getUltime10().map(p => {
+              {ultime10.map(p => {
                  const tableNames = (p.tavoli_assegnati || []).map(tid => {
                    const t = tuttiITavoli.find(x => String(x.id) === String(tid));
                    return t ? t.numero_tavolo : tid;
@@ -1042,7 +1055,7 @@ export default function App() {
                    </div>
                  )
               })}
-              {getUltime10().length === 0 && <p style={{textAlign: 'center', color: '#666'}}>Nessuna prenotazione trovata.</p>}
+              {ultime10.length === 0 && <p style={{textAlign: 'center', color: '#666'}}>Nessuna prenotazione trovata.</p>}
             </div>
           </div>
         </div>
