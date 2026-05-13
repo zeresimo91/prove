@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Draggable from 'react-draggable';
 
+// --- CONFIGURAZIONE SUPABASE ---
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// --- FUNZIONI DI FORMATTAZIONE DATA/ORA ---
 const formatData = (isoString) => {
   if (!isoString) return '';
   const d = new Date(isoString);
@@ -29,6 +31,7 @@ const getServizioDaOra = (isoString) => {
 };
 
 export default function App() {
+  // --- STATI PRINCIPALI ---
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState(null); 
   const [passInput, setPassInput] = useState('');
@@ -43,6 +46,7 @@ export default function App() {
   const [dataVista, setDataVista] = useState(formatData(new Date().toISOString()));
   const [servizioVista, setServizioVista] = useState(new Date().getHours() < 16 ? 'pranzo' : 'cena');
   
+  // --- STATI FORM PRENOTAZIONE ---
   const [nomeCliente, setNomeCliente] = useState('');
   const [numeroPersone, setNumeroPersone] = useState('');
   const [oraEsatta, setOraEsatta] = useState('');
@@ -51,6 +55,7 @@ export default function App() {
   const [editingId, setEditingId] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   
+  // --- STATI INTERFACCIA E POP-UP ---
   const [tavoloInfo, setTavoloInfo] = useState(null); 
   const [ricerca, setRicerca] = useState(''); 
   const [prenoInSpostamento, setPrenoInSpostamento] = useState(null);
@@ -63,6 +68,7 @@ export default function App() {
   const [showUltime10, setShowUltime10] = useState(false);
   const [nuoveNotifiche, setNuoveNotifiche] = useState([]);
 
+  // --- RIFERIMENTI MAPPA E DIMENSIONI VIRTUALI ---
   const fileInputRef = useRef(null);
   const mapContainerRef = useRef(null);
   const [mapScale, setMapScale] = useState(1);
@@ -77,9 +83,11 @@ export default function App() {
     isEditModeRef.current = isEditMode;
   }, [isEditMode]);
 
+  // --- FILTRI PRENOTAZIONI ---
   const prenotazioniAttive = prenotazioni.filter(p => !p.eliminata);
   const prenotazioniEliminate = prenotazioni.filter(p => p.eliminata).sort((a,b) => new Date(b.data_eliminazione) - new Date(a.data_eliminazione));
 
+  // --- GESTIONE RESIZE E SCALA MAPPA ---
   const updateMapScale = () => {
     const savedZoom = localStorage.getItem('belvedere_map_zoom');
     if (savedZoom) {
@@ -92,14 +100,13 @@ export default function App() {
   };
 
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 992);
-    };
+    const handleResize = () => setIsMobile(window.innerWidth < 992);
     window.addEventListener('resize', handleResize);
     setTimeout(updateMapScale, 100);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isLoggedIn, isFullscreen]);
+  }, [isLoggedIn, isFullscreen, isMobile]);
 
+  // --- LOGIN SALVATO ---
   useEffect(() => {
     const savedLogin = localStorage.getItem('belvedere_logged_in');
     const savedRole = localStorage.getItem('belvedere_user_role');
@@ -109,6 +116,7 @@ export default function App() {
     }
   }, []);
 
+  // --- STILI DEI BOTTONI ---
   const topBtnStyle = { 
     padding: '10px 16px', 
     borderRadius: '10px', 
@@ -140,11 +148,13 @@ export default function App() {
     alert("🔍 Livello di zoom salvato per questo dispositivo!");
   };
 
+  // --- REALTIME SUPABASE ---
   useEffect(() => {
     if (isLoggedIn) {
       const channel = supabase
         .channel('schema-db-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'prenotazioni' }, (payload) => { 
+            // Invia notifica pop-up
             if (payload.eventType === 'INSERT') {
                setNuoveNotifiche(prev => [...prev, payload.new]);
             }
@@ -162,14 +172,18 @@ export default function App() {
     setNuoveNotifiche(prev => prev.filter(n => n.id !== id));
   };
 
+  // --- ULTIME 10 PRENOTAZIONI (Logica infallibile sull'ID) ---
   const getUltime10 = () => {
     return [...prenotazioni]
       .filter(p => !p.eliminata)
       .sort((a, b) => {
-         if (a.created_at && b.created_at) {
-            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+         // Ordina forzatamente per ID numerico: l'ID più alto è sempre l'ultimissima inserita!
+         const idA = Number(a.id);
+         const idB = Number(b.id);
+         if (!isNaN(idA) && !isNaN(idB)) {
+            return idB - idA;
          }
-         return b.id - a.id; 
+         return 0; 
       })
       .slice(0, 10);
   };
@@ -195,6 +209,7 @@ export default function App() {
     return orari;
   };
 
+  // --- FUNZIONI DI EXPORT E IMPORT BACKUP ---
   const scaricaAgendaFile = () => {
     const presOggi = prenotazioniAttive.filter(p => formatData(p.data_ora) === dataVista && getServizioDaOra(p.data_ora) === servizioVista);
     if (presOggi.length === 0) return alert("Nessuna prenotazione da scaricare.");
@@ -246,6 +261,7 @@ export default function App() {
     reader.readAsText(file);
   }
 
+  // --- FUNZIONI DI CARICAMENTO DATI ---
   const aggiornaTutto = () => { caricaSale(); caricaPrenotazioni(); caricaTuttiITavoli(); };
   useEffect(() => { if (isLoggedIn) aggiornaTutto(); }, [isLoggedIn]);
 
@@ -262,6 +278,7 @@ export default function App() {
     if (data) setTuttiITavoli(data);
   }
 
+  // --- GESTIONE PRENOTAZIONI E TAVOLI ---
   async function salvaPrenotazione(e) {
     if (e) e.preventDefault();
     if (tavoliSelezionati.length === 0) return alert("Seleziona almeno un tavolo!");
@@ -331,6 +348,7 @@ export default function App() {
     }
   }
 
+  // --- GESTIONE MAPPA ADMIN ---
   async function aggiungiTavolo() {
     await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: '?', capacita: 2, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
     await caricaTuttiITavoli(); 
@@ -407,6 +425,7 @@ export default function App() {
 
   const resetForm = () => { setEditingId(null); setNomeCliente(''); setNumeroPersone(''); setOraEsatta(''); setNote(''); setTavoliSelezionati([]); setRicerca(''); };
 
+  // --- COMANDI VOCALI ---
   const ascoltaComando = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return alert("Il browser non supporta il riconoscimento vocale.");
@@ -498,6 +517,7 @@ export default function App() {
     if (n && p) { await supabase.from('tavoli').update({ numero_tavolo: n, capacita: parseInt(p) }).eq('id', t.id); aggiornaTutto(); }
   }
 
+  // --- FILTRI E VARIABILI VISTA ---
   const tuttiITavoliOrdinati = [...(tuttiITavoli || [])].filter(t => !String(t.numero_tavolo).startsWith('MURO')).sort((a, b) => parseInt(a.numero_tavolo) - parseInt(b.numero_tavolo));
   const prenotazioniDelServizio = prenotazioniAttive.filter(p => formatData(p.data_ora) === dataVista && getServizioDaOra(p.data_ora) === servizioVista);
   const totalePaxServizio = prenotazioniDelServizio.reduce((acc, p) => acc + (p.numero_persone || 0), 0);
@@ -524,6 +544,7 @@ export default function App() {
   };
   const stats = showStatistiche ? calcolaStatistiche() : null;
 
+  // === RENDER SCHERMATA DI LOGIN ===
   if (!isLoggedIn) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f4f6f8' }}>
@@ -540,7 +561,7 @@ export default function App() {
     );
   }
 
-  // COMPONENTI UI
+  // === RENDER SEZIONE FORM NUOVA PRENOTAZIONE ===
   const SezioneForm = (
     <div style={{ background: 'white', padding: '15px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', flexShrink: 0 }}>
       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
@@ -586,6 +607,7 @@ export default function App() {
     </div>
   );
 
+  // === RENDER SEZIONE MAPPA TAVOLI ===
   const SezioneMappa = (
     <div style={isFullscreen ? {
       position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999, 
@@ -633,7 +655,7 @@ export default function App() {
             
             {/* TAVOLI UNITI / MULTIPLI CON LOGICA ROSSO RISOLTA */}
             {!isEditMode && mergedReservations.map(p => {
-               // Evitiamo di stampare due mega-tavoli identici uno sull'altro se ci sono 2 prenotazioni per gli stessi tavoli.
+               // Evitiamo di stampare due mega-tavoli identici uno sull'altro
                const isDuplicateVisivo = mergedReservations.some(altrap => 
                   altrap.id < p.id && 
                   JSON.stringify([...(altrap.tavoli_assegnati || [])].map(String).sort()) === JSON.stringify([...(p.tavoli_assegnati || [])].map(String).sort())
@@ -753,6 +775,7 @@ export default function App() {
     </div>
   );
 
+  // === RENDER SEZIONE AGENDA ===
   const SezioneAgenda = (
     <div style={{ background: 'white', padding: '15px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: isMobile ? '100px' : '0' }}>
       <input type="text" placeholder="🔍 Ricerca cliente..." value={ricerca} onChange={e => setRicerca(e.target.value)} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #ced4da', fontSize: '15px', width: '100%', boxSizing: 'border-box', marginBottom: '15px' }} />
@@ -828,6 +851,7 @@ export default function App() {
     </div>
   );
 
+  // === STRUTTURA PRINCIPALE (LAYOUT) ===
   return (
     <div style={{ backgroundColor: '#f4f6f8', height: '100vh', padding: '10px', boxSizing: 'border-box', fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       
@@ -860,9 +884,11 @@ export default function App() {
       {/* HEADER GLOBALE */}
       <div style={{ background: 'white', padding: '12px 15px', borderRadius: '16px', marginBottom: '10px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', flexShrink: 0 }}>
         
+        {/* RIGA 1: Logo e Bottoni scorrevoli */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', alignItems: 'center', gap: '15px' }}>
           <img src="/logo.png" alt="Belvedere" style={{ height: isMobile ? '40px' : '50px', objectFit: 'contain', flexShrink: 0 }} />
 
+          {/* Wrapper per lo scroll orizzontale dei bottoni su mobile */}
           <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', flexGrow: 1, WebkitOverflowScrolling: 'touch' }}>
              {isAdmin && <button onClick={() => setShowStatistiche(true)} style={{ ...topBtnStyle, background: '#6c757d', color: 'white' }}>📈 Statistiche</button>}
              {isAdmin && <button onClick={() => setShowCestino(true)} style={{ ...topBtnStyle, background: '#343a40', color: 'white' }}>🗑️ Cestino</button>}
@@ -870,6 +896,7 @@ export default function App() {
              {isAdmin && <button onClick={() => { if(fileInputRef.current) fileInputRef.current.click() }} style={{ ...topBtnStyle, background: '#e83e8c', color: 'white' }}>📂 Carica DB</button>}
              <button onClick={() => setShowDisponibilita(true)} style={{ ...topBtnStyle, background: '#17a2b8', color: 'white', boxShadow: '0 2px 5px rgba(23,162,184,0.3)' }}>📊 Disponibilità</button>
              
+             {/* BOTTONE ULTIME 10 */}
              {isAdmin && <button onClick={() => setShowUltime10(true)} style={{ ...topBtnStyle, background: '#6f42c1', color: 'white' }}>🕒 Ultime 10</button>}
 
              <button onClick={ascoltaComando} style={{ ...topBtnStyle, background: isListening ? '#dc3545' : '#6f42c1', color: 'white', boxShadow: isListening ? '0 0 10px #dc3545' : 'none' }}>{isListening ? '🎙️ Ascolta...' : '🎤 Voce'}</button>
@@ -878,6 +905,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* RIGA 2: Data e Servizio */}
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <input type="date" value={dataVista} onChange={e => setDataVista(e.target.value)} style={{ padding: '8px', borderRadius: '10px', border: '1px solid #ddd', fontSize: '14px', flexShrink: 0 }} />
           <div style={{ background: '#f1f3f5', borderRadius: '12px', padding: '4px', display: 'flex', gap: '4px' }}>
