@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Draggable from 'react-draggable';
 
+// --- CONFIGURAZIONE SUPABASE ---
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// --- FUNZIONI DI FORMATTAZIONE DATA/ORA ---
 const formatData = (isoString) => {
   if (!isoString) return '';
   const d = new Date(isoString);
@@ -29,6 +31,7 @@ const getServizioDaOra = (isoString) => {
 };
 
 export default function App() {
+  // --- STATI PRINCIPALI ---
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState(null); 
   const [passInput, setPassInput] = useState('');
@@ -43,6 +46,7 @@ export default function App() {
   const [dataVista, setDataVista] = useState(formatData(new Date().toISOString()));
   const [servizioVista, setServizioVista] = useState(new Date().getHours() < 16 ? 'pranzo' : 'cena');
   
+  // --- STATI FORM PRENOTAZIONE ---
   const [nomeCliente, setNomeCliente] = useState('');
   const [numeroPersone, setNumeroPersone] = useState('');
   const [oraEsatta, setOraEsatta] = useState('');
@@ -51,6 +55,7 @@ export default function App() {
   const [editingId, setEditingId] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   
+  // --- STATI INTERFACCIA E POP-UP ---
   const [tavoloInfo, setTavoloInfo] = useState(null); 
   const [ricerca, setRicerca] = useState(''); 
   const [prenoInSpostamento, setPrenoInSpostamento] = useState(null);
@@ -60,7 +65,10 @@ export default function App() {
   const [showDisponibilita, setShowDisponibilita] = useState(false);
   const [showStatistiche, setShowStatistiche] = useState(false);
   const [showCestino, setShowCestino] = useState(false);
+  const [showUltime10, setShowUltime10] = useState(false);
+  const [nuoveNotifiche, setNuoveNotifiche] = useState([]);
 
+  // --- RIFERIMENTI MAPPA E DIMENSIONI VIRTUALI ---
   const fileInputRef = useRef(null);
   const mapContainerRef = useRef(null);
   const [mapScale, setMapScale] = useState(1);
@@ -75,9 +83,11 @@ export default function App() {
     isEditModeRef.current = isEditMode;
   }, [isEditMode]);
 
+  // --- FILTRI PRENOTAZIONI ---
   const prenotazioniAttive = prenotazioni.filter(p => !p.eliminata);
   const prenotazioniEliminate = prenotazioni.filter(p => p.eliminata).sort((a,b) => new Date(b.data_eliminazione) - new Date(a.data_eliminazione));
 
+  // --- GESTIONE RESIZE E SCALA MAPPA ---
   const updateMapScale = () => {
     const savedZoom = localStorage.getItem('belvedere_map_zoom');
     if (savedZoom) {
@@ -90,14 +100,13 @@ export default function App() {
   };
 
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 992);
-    };
+    const handleResize = () => setIsMobile(window.innerWidth < 992);
     window.addEventListener('resize', handleResize);
     setTimeout(updateMapScale, 100);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isLoggedIn, isFullscreen]);
+  }, [isLoggedIn, isFullscreen, isMobile]);
 
+  // --- LOGIN SALVATO ---
   useEffect(() => {
     const savedLogin = localStorage.getItem('belvedere_logged_in');
     const savedRole = localStorage.getItem('belvedere_user_role');
@@ -107,6 +116,7 @@ export default function App() {
     }
   }, []);
 
+  // --- STILI DEI BOTTONI ---
   const topBtnStyle = { 
     padding: '10px 16px', 
     borderRadius: '10px', 
@@ -133,18 +143,21 @@ export default function App() {
   const zoomIn = () => setMapScale(prev => Math.min(prev + 0.1, 1.8));
   const zoomOut = () => setMapScale(prev => Math.max(prev - 0.1, 0.2));
 
-  // --- FUNZIONE SALVA ZOOM ---
   const salvaZoom = () => {
     localStorage.setItem('belvedere_map_zoom', mapScale.toString());
     alert("🔍 Livello di zoom salvato per questo dispositivo!");
   };
 
-  // REALTIME
+  // --- REALTIME SUPABASE ---
   useEffect(() => {
     if (isLoggedIn) {
       const channel = supabase
         .channel('schema-db-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'prenotazioni' }, () => { 
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'prenotazioni' }, (payload) => { 
+            // Invia notifica pop-up
+            if (payload.eventType === 'INSERT') {
+               setNuoveNotifiche(prev => [...prev, payload.new]);
+            }
             if (!isEditModeRef.current) caricaPrenotazioni(); 
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tavoli' }, () => { 
@@ -154,6 +167,23 @@ export default function App() {
       return () => { supabase.removeChannel(channel); };
     }
   }, [isLoggedIn]);
+
+  const rimuoviNotifica = (id) => {
+    setNuoveNotifiche(prev => prev.filter(n => n.id !== id));
+  };
+
+  // --- ULTIME 10 PRENOTAZIONI ---
+  const getUltime10 = () => {
+    return [...prenotazioni]
+      .filter(p => !p.eliminata)
+      .sort((a, b) => {
+         if (a.created_at && b.created_at) {
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+         }
+         return b.id - a.id; 
+      })
+      .slice(0, 10);
+  };
 
   const getPrenotazioniTurno = (tavoloId) => {
     return prenotazioniAttive.filter(p => 
@@ -176,6 +206,7 @@ export default function App() {
     return orari;
   };
 
+  // --- FUNZIONI DI EXPORT E IMPORT BACKUP ---
   const scaricaAgendaFile = () => {
     const presOggi = prenotazioniAttive.filter(p => formatData(p.data_ora) === dataVista && getServizioDaOra(p.data_ora) === servizioVista);
     if (presOggi.length === 0) return alert("Nessuna prenotazione da scaricare.");
@@ -227,6 +258,7 @@ export default function App() {
     reader.readAsText(file);
   }
 
+  // --- FUNZIONI DI CARICAMENTO DATI ---
   const aggiornaTutto = () => { caricaSale(); caricaPrenotazioni(); caricaTuttiITavoli(); };
   useEffect(() => { if (isLoggedIn) aggiornaTutto(); }, [isLoggedIn]);
 
@@ -243,6 +275,7 @@ export default function App() {
     if (data) setTuttiITavoli(data);
   }
 
+  // --- GESTIONE PRENOTAZIONI E TAVOLI ---
   async function salvaPrenotazione(e) {
     if (e) e.preventDefault();
     if (tavoliSelezionati.length === 0) return alert("Seleziona almeno un tavolo!");
@@ -312,6 +345,7 @@ export default function App() {
     }
   }
 
+  // --- GESTIONE MAPPA ADMIN ---
   async function aggiungiTavolo() {
     await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: '?', capacita: 2, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
     await caricaTuttiITavoli(); 
@@ -388,6 +422,7 @@ export default function App() {
 
   const resetForm = () => { setEditingId(null); setNomeCliente(''); setNumeroPersone(''); setOraEsatta(''); setNote(''); setTavoliSelezionati([]); setRicerca(''); };
 
+  // --- COMANDI VOCALI ---
   const ascoltaComando = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return alert("Il browser non supporta il riconoscimento vocale.");
@@ -479,6 +514,7 @@ export default function App() {
     if (n && p) { await supabase.from('tavoli').update({ numero_tavolo: n, capacita: parseInt(p) }).eq('id', t.id); aggiornaTutto(); }
   }
 
+  // --- FILTRI, ORDINAMENTI E VARIABILI VISTA ---
   const tuttiITavoliOrdinati = [...(tuttiITavoli || [])].filter(t => !String(t.numero_tavolo).startsWith('MURO')).sort((a, b) => parseInt(a.numero_tavolo) - parseInt(b.numero_tavolo));
   const prenotazioniDelServizio = prenotazioniAttive.filter(p => formatData(p.data_ora) === dataVista && getServizioDaOra(p.data_ora) === servizioVista);
   const totalePaxServizio = prenotazioniDelServizio.reduce((acc, p) => acc + (p.numero_persone || 0), 0);
@@ -505,6 +541,7 @@ export default function App() {
   };
   const stats = showStatistiche ? calcolaStatistiche() : null;
 
+  // === RENDER SCHERMATA DI LOGIN ===
   if (!isLoggedIn) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f4f6f8' }}>
@@ -521,7 +558,7 @@ export default function App() {
     );
   }
 
-  // COMPONENTI UI
+  // === RENDER SEZIONE FORM NUOVA PRENOTAZIONE ===
   const SezioneForm = (
     <div style={{ background: 'white', padding: '15px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', flexShrink: 0 }}>
       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
@@ -567,6 +604,7 @@ export default function App() {
     </div>
   );
 
+  // === RENDER SEZIONE MAPPA TAVOLI ===
   const SezioneMappa = (
     <div style={isFullscreen ? {
       position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999, 
@@ -612,6 +650,7 @@ export default function App() {
         <div style={{ width: VIRTUAL_WIDTH * mapScale, height: VIRTUAL_HEIGHT * mapScale }}>
           <div style={{ width: `${VIRTUAL_WIDTH}px`, height: `${VIRTUAL_HEIGHT}px`, transform: `scale(${mapScale})`, transformOrigin: 'top left', position: 'relative' }}>
             
+            {/* TAVOLI UNITI / MULTIPLI */}
             {!isEditMode && mergedReservations.map(p => {
                const assignedTables = tuttiITavoli.filter(t => (p.tavoli_assegnati || []).some(tid => String(tid) === String(t.id)) && !String(t.numero_tavolo).startsWith('MURO'));
                if (assignedTables.length < 2) return null;
@@ -631,13 +670,14 @@ export default function App() {
                       onClick={(e) => { e.stopPropagation(); setTavoloInfo(assignedTables[0].id); }}
                       style={{ position: 'absolute', top: minY, left: minX, width: width, height: height, background: bgCol, border: `4px solid ${bCol}`, borderRadius: '15px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, opacity: 0.95, boxShadow: '0px 10px 20px rgba(0,0,0,0.2)' }}>
                    <strong style={{ fontSize: '20px', marginBottom: '8px', color: '#333' }}>Tav. {assignedTables.map(t => t.numero_tavolo).join(' + ')}</strong>
-                   <div style={{ fontSize: '14px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '6px 12px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold' }}>
-                       {formatOra(p.data_ora)} - {p.nome_cliente} <br/> ({p.numero_persone}p)
+                   <div style={{ fontSize: '15px', background: p.presente ? '#28a745' : 'rgba(0,0,0,0.85)', color: 'white', padding: '6px 12px', borderRadius: '10px', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '95%' }}>
+                       {formatOra(p.data_ora)} {p.nome_cliente} ({p.numero_persone}p)
                    </div>
                  </div>
                )
             })}
 
+            {/* TAVOLI SINGOLI E MURI */}
             {tuttiITavoli.map(t => {
               const isMuro = String(t.numero_tavolo).startsWith('MURO');
               const isMergedHidden = !isEditMode && mergedTableIds.has(String(t.id)) && !isMuro;
@@ -663,13 +703,15 @@ export default function App() {
                  );
               }
 
+              // LOGICA COLORI TAVOLI
               const pres = getPrenotazioniTurno(t.id);
               const sel = tavoliSelezionati.includes(t.id);
               let bgCol = 'white'; let bCol = '#adb5bd';
+              
               if (sel) { bgCol = '#cfe2ff'; bCol = '#0d6efd'; } 
-              else if (pres.length > 1) { bgCol = '#dc3545'; bCol = '#a71d2a'; } 
-              else if (pres.some(p => p.presente)) { bgCol = '#d1e7dd'; bCol = '#28a745'; } 
-              else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } 
+              else if (pres.length > 1) { bgCol = '#dc3545'; bCol = '#a71d2a'; } // ROSSO (Più prenotazioni stesso turno)
+              else if (pres.some(p => p.presente)) { bgCol = '#d1e7dd'; bCol = '#28a745'; } // VERDE (Arrivato)
+              else if (pres.length === 1) { bgCol = '#fd7e14'; bCol = '#d35400'; } // ARANCIO (Prenotato)
 
               return (
                 <Draggable key={t.id} disabled={!isEditMode} scale={mapScale} bounds="parent" position={{ x: Number(t.pos_x) || 50, y: Number(t.pos_y) || 50 }} onStop={(e, d) => aggiornaPosizioneLocale(t.id, d.x, d.y)}>
@@ -686,10 +728,10 @@ export default function App() {
                     )}
 
                     <strong style={{ fontSize: `${dimensioneTestoTavolo}px`, marginBottom: '2px', color: (bgCol === '#dc3545') ? 'white' : '#333' }}>{t.numero_tavolo}</strong>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '95%' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '98%' }}>
                       {pres.map(p => (
-                        <div key={p.id} onClick={(e) => { e.stopPropagation(); if(!isEditMode) setTavoloInfo(t.id); }} style={{ fontSize: `10px`, background: p.presente ? '#28a745' : 'rgba(0,0,0,0.75)', color: 'white', padding: '2px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: p.presente ? '1px solid white' : 'none', lineHeight: '1.2' }}>
-                          {formatOra(p.data_ora)} - {p.nome_cliente.substring(0,6)}
+                        <div key={p.id} onClick={(e) => { e.stopPropagation(); if(!isEditMode) setTavoloInfo(t.id); }} style={{ fontSize: `14px`, background: p.presente ? '#28a745' : 'rgba(0,0,0,0.85)', color: 'white', padding: '4px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: p.presente ? '1px solid white' : 'none', lineHeight: '1.2' }}>
+                          {formatOra(p.data_ora)} {p.nome_cliente}
                         </div>
                       ))}
                     </div>
@@ -703,6 +745,7 @@ export default function App() {
     </div>
   );
 
+  // === RENDER SEZIONE AGENDA ===
   const SezioneAgenda = (
     <div style={{ background: 'white', padding: '15px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: isMobile ? '100px' : '0' }}>
       <input type="text" placeholder="🔍 Ricerca cliente..." value={ricerca} onChange={e => setRicerca(e.target.value)} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #ced4da', fontSize: '15px', width: '100%', boxSizing: 'border-box', marginBottom: '15px' }} />
@@ -778,9 +821,34 @@ export default function App() {
     </div>
   );
 
+  // === STRUTTURA PRINCIPALE (LAYOUT) ===
   return (
     <div style={{ backgroundColor: '#f4f6f8', height: '100vh', padding: '10px', boxSizing: 'border-box', fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       
+      {/* SEZIONE TOAST (NOTIFICHE POPUP IN TEMPO REALE) */}
+      <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 999999, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {nuoveNotifiche.map(notifica => {
+          const tableNames = (notifica.tavoli_assegnati || []).map(tid => {
+            const t = tuttiITavoli.find(x => String(x.id) === String(tid));
+            return t ? t.numero_tavolo : tid;
+          }).join(', ');
+
+          return (
+            <div key={notifica.id} onClick={() => rimuoviNotifica(notifica.id)} style={{ background: '#1a73e8', color: 'white', padding: '15px', borderRadius: '12px', boxShadow: '0 5px 15px rgba(0,0,0,0.3)', cursor: 'pointer', minWidth: '250px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.3)', paddingBottom: '8px', marginBottom: '8px' }}>
+                 <strong style={{fontSize: '15px'}}>🔔 Nuova Prenotazione</strong>
+                 <span style={{fontSize: '18px', lineHeight: '1'}}>✖</span>
+              </div>
+              <div style={{fontSize: '14px', display: 'flex', flexDirection: 'column', gap: '4px'}}>
+                 <span>👤 <b>{notifica.nome_cliente}</b> ({notifica.numero_persone} pax)</span>
+                 <span>🕒 <b>{formatDataLeggibile(notifica.data_ora)}</b> alle <b>{formatOra(notifica.data_ora)}</b></span>
+                 <span>🪑 Tavoli: <b>{tableNames || "Nessuno"}</b></span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       <input type="file" accept=".json" ref={fileInputRef} style={{ display: 'none' }} onChange={importaBackup} />
 
       {/* HEADER GLOBALE */}
@@ -797,6 +865,10 @@ export default function App() {
              {isAdmin && <button onClick={esportaBackup} style={{ ...topBtnStyle, background: '#17a2b8', color: 'white' }}>💾 Backup DB</button>}
              {isAdmin && <button onClick={() => { if(fileInputRef.current) fileInputRef.current.click() }} style={{ ...topBtnStyle, background: '#e83e8c', color: 'white' }}>📂 Carica DB</button>}
              <button onClick={() => setShowDisponibilita(true)} style={{ ...topBtnStyle, background: '#17a2b8', color: 'white', boxShadow: '0 2px 5px rgba(23,162,184,0.3)' }}>📊 Disponibilità</button>
+             
+             {/* BOTTONE ULTIME 10 */}
+             {isAdmin && <button onClick={() => setShowUltime10(true)} style={{ ...topBtnStyle, background: '#6f42c1', color: 'white' }}>🕒 Ultime 10</button>}
+
              <button onClick={ascoltaComando} style={{ ...topBtnStyle, background: isListening ? '#dc3545' : '#6f42c1', color: 'white', boxShadow: isListening ? '0 0 10px #dc3545' : 'none' }}>{isListening ? '🎙️ Ascolta...' : '🎤 Voce'}</button>
              {isAdmin && <button onClick={scaricaAgendaFile} style={{ ...topBtnStyle, background: '#e7f1ff', color: '#0d6efd' }}>📥 AGENDA</button>}
              <button onClick={() => { setIsLoggedIn(false); localStorage.removeItem('belvedere_logged_in'); localStorage.removeItem('belvedere_user_role'); }} style={{ ...topBtnStyle, background: '#f8f9fa', color: '#dc3545', border: '1px solid #ddd' }}>Esci</button>
@@ -931,6 +1003,43 @@ export default function App() {
                    </div>
                  )
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NUOVO POP-UP: ULTIME 10 PRENOTAZIONI INSERITE */}
+      {showUltime10 && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', zIndex: 99999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box' }} onClick={() => setShowUltime10(false)}>
+          <div style={{ background: 'white', padding: '25px', borderRadius: '20px', width: '100%', maxWidth: '600px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '15px' }}>
+              <h2 style={{ margin: 0, color: '#6f42c1', fontSize: '20px' }}>🕒 Ultime 10 Inserite</h2>
+              <button onClick={() => setShowUltime10(false)} style={{ background: '#dc3545', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}>CHIUDI ✖</button>
+            </div>
+            
+            <div style={{ overflowY: 'auto', flexGrow: 1, paddingRight: '10px' }}>
+              {getUltime10().map(p => {
+                 const tableNames = (p.tavoli_assegnati || []).map(tid => {
+                   const t = tuttiITavoli.find(x => String(x.id) === String(tid));
+                   return t ? t.numero_tavolo : tid;
+                 }).join(', ');
+
+                 return (
+                   <div key={p.id} style={{ padding: '12px 15px', background: '#f8f9fa', borderRadius: '12px', marginBottom: '10px', borderLeft: '5px solid #6f42c1', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                         <strong style={{ fontSize: '16px', color: '#333' }}>👤 {p.nome_cliente} ({p.numero_persone} pax)</strong>
+                         <span style={{ fontSize: '11px', color: '#666', background: '#e9ecef', padding: '4px 8px', borderRadius: '10px', fontWeight: 'bold' }}>ID: {p.id}</span>
+                      </div>
+                      <div style={{ fontSize: '14px', color: '#555', marginBottom: '4px' }}>
+                         📅 Prenotato per il: <b style={{color: '#1a73e8'}}>{formatDataLeggibile(p.data_ora)}</b> alle <b style={{color: '#1a73e8'}}>{formatOra(p.data_ora)}</b>
+                      </div>
+                      <div style={{ fontSize: '14px', color: '#555' }}>
+                         🪑 Tavoli assegnati: <b style={{color: '#d35400'}}>{tableNames || "Nessuno"}</b>
+                      </div>
+                   </div>
+                 )
+              })}
+              {getUltime10().length === 0 && <p style={{textAlign: 'center', color: '#666'}}>Nessuna prenotazione trovata.</p>}
             </div>
           </div>
         </div>
