@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Draggable from 'react-draggable';
 
+// --- CONFIGURAZIONE SUPABASE ---
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// --- FUNZIONI DI FORMATTAZIONE DATA/ORA ---
 const formatData = (isoString) => {
   if (!isoString) return '';
   const d = new Date(isoString);
@@ -29,6 +31,7 @@ const getServizioDaOra = (isoString) => {
 };
 
 export default function App() {
+  // --- STATI PRINCIPALI ---
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState(null); 
   const [passInput, setPassInput] = useState('');
@@ -43,6 +46,7 @@ export default function App() {
   const [dataVista, setDataVista] = useState(formatData(new Date().toISOString()));
   const [servizioVista, setServizioVista] = useState(new Date().getHours() < 16 ? 'pranzo' : 'cena');
   
+  // --- STATI FORM PRENOTAZIONE ---
   const [nomeCliente, setNomeCliente] = useState('');
   const [numeroPersone, setNumeroPersone] = useState('');
   const [oraEsatta, setOraEsatta] = useState('');
@@ -51,6 +55,7 @@ export default function App() {
   const [editingId, setEditingId] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   
+  // --- STATI INTERFACCIA E POP-UP ---
   const [tavoloInfo, setTavoloInfo] = useState(null); 
   const [ricerca, setRicerca] = useState(''); 
   const [prenoInSpostamento, setPrenoInSpostamento] = useState(null);
@@ -60,11 +65,11 @@ export default function App() {
   const [showDisponibilita, setShowDisponibilita] = useState(false);
   const [showStatistiche, setShowStatistiche] = useState(false);
   const [showCestino, setShowCestino] = useState(false);
-  
   const [showUltime10, setShowUltime10] = useState(false);
-  const [ultime10, setUltime10] = useState([]); // NUOVO STATO DEDICATO
+  const [ultime10, setUltime10] = useState([]); 
   const [nuoveNotifiche, setNuoveNotifiche] = useState([]);
 
+  // --- RIFERIMENTI MAPPA E DIMENSIONI VIRTUALI ---
   const fileInputRef = useRef(null);
   const mapContainerRef = useRef(null);
   const [mapScale, setMapScale] = useState(1);
@@ -79,9 +84,11 @@ export default function App() {
     isEditModeRef.current = isEditMode;
   }, [isEditMode]);
 
+  // --- FILTRI PRENOTAZIONI ---
   const prenotazioniAttive = prenotazioni.filter(p => !p.eliminata);
   const prenotazioniEliminate = prenotazioni.filter(p => p.eliminata).sort((a,b) => new Date(b.data_eliminazione) - new Date(a.data_eliminazione));
 
+  // --- GESTIONE RESIZE E SCALA MAPPA ---
   const updateMapScale = () => {
     const savedZoom = localStorage.getItem('belvedere_map_zoom');
     if (savedZoom) {
@@ -94,14 +101,13 @@ export default function App() {
   };
 
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 992);
-    };
+    const handleResize = () => setIsMobile(window.innerWidth < 992);
     window.addEventListener('resize', handleResize);
     setTimeout(updateMapScale, 100);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isLoggedIn, isFullscreen]);
+  }, [isLoggedIn, isFullscreen, isMobile]);
 
+  // --- LOGIN SALVATO ---
   useEffect(() => {
     const savedLogin = localStorage.getItem('belvedere_logged_in');
     const savedRole = localStorage.getItem('belvedere_user_role');
@@ -111,6 +117,7 @@ export default function App() {
     }
   }, []);
 
+  // --- STILI DEI BOTTONI ---
   const topBtnStyle = { 
     padding: '10px 16px', 
     borderRadius: '10px', 
@@ -142,11 +149,13 @@ export default function App() {
     alert("🔍 Livello di zoom salvato per questo dispositivo!");
   };
 
+  // --- REALTIME SUPABASE ---
   useEffect(() => {
     if (isLoggedIn) {
       const channel = supabase
         .channel('schema-db-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'prenotazioni' }, (payload) => { 
+            // Invia notifica pop-up
             if (payload.eventType === 'INSERT') {
                setNuoveNotifiche(prev => [...prev, payload.new]);
             }
@@ -164,9 +173,8 @@ export default function App() {
     setNuoveNotifiche(prev => prev.filter(n => n.id !== id));
   };
 
-  // --- NUOVA FUNZIONE INFALLIBILE PER LE ULTIME 10 ---
+  // --- ULTIME 10 PRENOTAZIONI DAL SERVER ---
   const apriUltime10 = async () => {
-    // Chiediamo direttamente al database di darci le ultime 10 create, ordinandole per la data di creazione
     const { data, error } = await supabase
       .from('prenotazioni')
       .select('*')
@@ -175,7 +183,7 @@ export default function App() {
       .limit(10);
       
     if (error) {
-      alert("ATTENZIONE: Si è verificato un errore, probabile che manchi la colonna 'created_at' nel tuo database Supabase!");
+      alert("ATTENZIONE: Si è verificato un errore di connessione a Supabase.");
     } else {
       setUltime10(data || []);
       setShowUltime10(true);
@@ -203,6 +211,7 @@ export default function App() {
     return orari;
   };
 
+  // --- FUNZIONI DI EXPORT E IMPORT BACKUP ---
   const scaricaAgendaFile = () => {
     const presOggi = prenotazioniAttive.filter(p => formatData(p.data_ora) === dataVista && getServizioDaOra(p.data_ora) === servizioVista);
     if (presOggi.length === 0) return alert("Nessuna prenotazione da scaricare.");
@@ -254,6 +263,7 @@ export default function App() {
     reader.readAsText(file);
   }
 
+  // --- FUNZIONI DI CARICAMENTO DATI ---
   const aggiornaTutto = () => { caricaSale(); caricaPrenotazioni(); caricaTuttiITavoli(); };
   useEffect(() => { if (isLoggedIn) aggiornaTutto(); }, [isLoggedIn]);
 
@@ -270,6 +280,7 @@ export default function App() {
     if (data) setTuttiITavoli(data);
   }
 
+  // --- GESTIONE PRENOTAZIONI E TAVOLI ---
   async function salvaPrenotazione(e) {
     if (e) e.preventDefault();
     if (tavoliSelezionati.length === 0) return alert("Seleziona almeno un tavolo!");
@@ -339,13 +350,67 @@ export default function App() {
     }
   }
 
+  // --- GESTIONE MAPPA ADMIN (AGGIUNTA TAVOLI CON SCELTA SALA) ---
   async function aggiungiTavolo() {
-    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: '?', capacita: 2, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
+    if (!sale || sale.length === 0) return alert("Attenzione: Crea almeno una sala nel database prima di aggiungere tavoli!");
+    
+    // Creiamo il testo da mostrare nel prompt
+    let messaggioPrompt = "Scegli in quale SALA inserire il nuovo tavolo digitando il numero corrispondente:\n\n";
+    sale.forEach((s, index) => {
+       messaggioPrompt += `${index + 1} - ${s.nome}\n`;
+    });
+    messaggioPrompt += "\nInserisci il numero:";
+
+    const scelta = window.prompt(messaggioPrompt, "1");
+    if (scelta === null) return; // Utente ha cliccato Annulla
+
+    const indice = parseInt(scelta) - 1;
+    if (isNaN(indice) || indice < 0 || indice >= sale.length) {
+       return alert("Scelta non valida! Nessun tavolo aggiunto.");
+    }
+
+    const salaSceltaId = sale[indice].id;
+
+    await supabase.from('tavoli').insert([{ 
+      sala_id: salaSceltaId, 
+      numero_tavolo: '?', 
+      capacita: 2, 
+      pos_x: 200, 
+      pos_y: 200, 
+      std_x: 200, 
+      std_y: 200 
+    }]);
     await caricaTuttiITavoli(); 
   }
 
   async function aggiungiMuro() {
-    await supabase.from('tavoli').insert([{ sala_id: sale.length > 0 ? sale[0].id : null, numero_tavolo: 'MURO_300x20', capacita: 0, pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 }]);
+    if (!sale || sale.length === 0) return alert("Attenzione: Crea almeno una sala nel database prima di aggiungere muri!");
+    
+    let messaggioPrompt = "Scegli in quale SALA inserire il nuovo MURO digitando il numero corrispondente:\n\n";
+    sale.forEach((s, index) => {
+       messaggioPrompt += `${index + 1} - ${s.nome}\n`;
+    });
+    messaggioPrompt += "\nInserisci il numero:";
+
+    const scelta = window.prompt(messaggioPrompt, "1");
+    if (scelta === null) return; 
+
+    const indice = parseInt(scelta) - 1;
+    if (isNaN(indice) || indice < 0 || indice >= sale.length) {
+       return alert("Scelta non valida! Nessun muro aggiunto.");
+    }
+
+    const salaSceltaId = sale[indice].id;
+
+    await supabase.from('tavoli').insert([{ 
+      sala_id: salaSceltaId, 
+      numero_tavolo: 'MURO_300x20', 
+      capacita: 0, 
+      pos_x: 200, 
+      pos_y: 200, 
+      std_x: 200, 
+      std_y: 200 
+    }]);
     await caricaTuttiITavoli(); 
   }
 
