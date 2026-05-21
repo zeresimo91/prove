@@ -351,31 +351,23 @@ export default function App() {
   }
 
   // --- GESTIONE MAPPA ADMIN (AGGIUNTA TAVOLI CON SCELTA SALA) ---
-  async function aggiungiElemento(tipo) {
-  if (!sale || sale.length === 0) return alert("Errore: Prima crea delle sale nel database!");
-  
-  // Crea il messaggio per il prompt
-  let msg = "Scegli in quale SALA inserire il nuovo " + tipo + ":\n";
-  sale.forEach((s, index) => { msg += `${index + 1} - ${s.nome}\n`; });
-  msg += "\nInserisci il numero:";
+  async function aggiungiTavolo() {
+    if (!sale || sale.length === 0) return alert("Attenzione: Crea almeno una sala nel database prima di aggiungere tavoli!");
+    
+    // Creiamo il testo da mostrare nel prompt
+    let messaggioPrompt = "Scegli in quale SALA inserire il nuovo tavolo digitando il numero corrispondente:\n\n";
+    sale.forEach((s, index) => {
+       messaggioPrompt += `${index + 1} - ${s.nome}\n`;
+    });
+    messaggioPrompt += "\nInserisci il numero:";
 
-  const scelta = window.prompt(msg, "1");
-  if (scelta === null) return; // Annulla
-  
-  const indice = parseInt(scelta) - 1;
-  if (isNaN(indice) || indice < 0 || indice >= sale.length) return alert("Scelta non valida!");
-  
-  const salaSceltaId = sale[indice].id;
+    const scelta = window.prompt(messaggioPrompt, "1");
+    if (scelta === null) return; // Utente ha cliccato Annulla
 
-  await supabase.from('tavoli').insert([{ 
-    sala_id: salaSceltaId, 
-    numero_tavolo: tipo === 'tavolo' ? '?' : 'MURO_300x20', 
-    capacita: tipo === 'tavolo' ? 2 : 0, 
-    pos_x: 200, pos_y: 200, std_x: 200, std_y: 200 
-  }]);
-  
-  caricaTuttiITavoli(); 
-}
+    const indice = parseInt(scelta) - 1;
+    if (isNaN(indice) || indice < 0 || indice >= sale.length) {
+       return alert("Scelta non valida! Nessun tavolo aggiunto.");
+    }
 
     const salaSceltaId = sale[indice].id;
 
@@ -474,20 +466,17 @@ export default function App() {
     aggiornaTutto();
   }
 
-  const handleLogin = async (e) => {
-  e.preventDefault();
-  const { error } = await supabase.auth.signInWithPassword({
-    email: emailInput.trim(),
-    password: passInput.trim(),
-  });
-  
-  if (error) {
-    alert("Errore Login: " + error.message);
-  } else {
-    // Supabase gestirà la sessione automaticamente
-    window.location.reload(); 
-  }
-};
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const pwd = passInput.toLowerCase().trim();
+    if (passInput === "belvedere59") {
+      setIsLoggedIn(true); setUserRole('admin');
+      if (ricordami) { localStorage.setItem('belvedere_logged_in', 'true'); localStorage.setItem('belvedere_user_role', 'admin'); }
+    } else if (pwd === "seba") {
+      setIsLoggedIn(true); setUserRole('cameriere');
+      if (ricordami) { localStorage.setItem('belvedere_logged_in', 'true'); localStorage.setItem('belvedere_user_role', 'cameriere'); }
+    } else { alert("Password errata!"); }
+  };
 
   const resetForm = () => { setEditingId(null); setNomeCliente(''); setNumeroPersone(''); setOraEsatta(''); setNote(''); setTavoliSelezionati([]); setRicerca(''); };
 
