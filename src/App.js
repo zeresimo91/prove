@@ -466,17 +466,22 @@ export default function App() {
     aggiornaTutto();
   }
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    const pwd = passInput.toLowerCase().trim();
-    if (passInput === "belvedere59") {
-      setIsLoggedIn(true); setUserRole('admin');
-      if (ricordami) { localStorage.setItem('belvedere_logged_in', 'true'); localStorage.setItem('belvedere_user_role', 'admin'); }
-    } else if (pwd === "seba") {
-      setIsLoggedIn(true); setUserRole('cameriere');
-      if (ricordami) { localStorage.setItem('belvedere_logged_in', 'true'); localStorage.setItem('belvedere_user_role', 'cameriere'); }
-    } else { alert("Password errata!"); }
-  };
+ const handleLogin = async (e) => {
+  e.preventDefault();
+  // Usa i dati dai tuoi stati 'emailInput' e 'passInput'
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: emailInput.trim(),
+    password: passInput.trim(),
+  });
+
+  if (error) {
+    alert("Errore accesso: " + error.message);
+  } else {
+    // Supabase gestirà la sessione in automatico
+    setIsLoggedIn(true);
+    // Opzionale: salva il ruolo se necessario, o leggilo dal profilo utente
+  }
+};
 
   const resetForm = () => { setEditingId(null); setNomeCliente(''); setNumeroPersone(''); setOraEsatta(''); setNote(''); setTavoliSelezionati([]); setRicerca(''); };
 
