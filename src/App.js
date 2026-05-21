@@ -466,36 +466,17 @@ export default function App() {
     aggiornaTutto();
   }
 
-  // Aggiungi questo useEffect per controllare se sei già loggato all'apertura del sito
-useEffect(() => {
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    if (session) {
-      setIsLoggedIn(true);
-      setUserRole(session.user.email === 'admin@belvedere.com' ? 'admin' : 'cameriere');
-    }
-  });
-
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-    setIsLoggedIn(!!session);
-  });
-  return () => subscription.unsubscribe();
-}, []);
-
-// Sostituisci la vecchia funzione handleLogin con questa:
-const handleLogin = async (e) => {
-  e.preventDefault();
-  const { error } = await supabase.auth.signInWithPassword({
-    email: emailInput.trim(),
-    password: passInput.trim(),
-  });
-  
-  if (error) {
-    alert("Errore Login: " + error.message);
-  } else {
-    // Il login è andato a buon fine, l'app si aggiornerà da sola grazie all'effetto sopra
-    window.location.reload(); 
-  }
-};
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const pwd = passInput.toLowerCase().trim();
+    if (passInput === "belvedere59") {
+      setIsLoggedIn(true); setUserRole('admin');
+      if (ricordami) { localStorage.setItem('belvedere_logged_in', 'true'); localStorage.setItem('belvedere_user_role', 'admin'); }
+    } else if (pwd === "seba") {
+      setIsLoggedIn(true); setUserRole('cameriere');
+      if (ricordami) { localStorage.setItem('belvedere_logged_in', 'true'); localStorage.setItem('belvedere_user_role', 'cameriere'); }
+    } else { alert("Password errata!"); }
+  };
 
   const resetForm = () => { setEditingId(null); setNomeCliente(''); setNumeroPersone(''); setOraEsatta(''); setNote(''); setTavoliSelezionati([]); setRicerca(''); };
 
