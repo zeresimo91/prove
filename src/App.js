@@ -469,10 +469,10 @@ export default function App() {
   const handleLogin = (e) => {
     e.preventDefault();
     const pwd = passInput.toLowerCase().trim();
-    if (passInput === "belvedere59") {
+    if (passInput === "diva87") {
       setIsLoggedIn(true); setUserRole('admin');
       if (ricordami) { localStorage.setItem('belvedere_logged_in', 'true'); localStorage.setItem('belvedere_user_role', 'admin'); }
-    } else if (pwd === "seba") {
+    } else if (pwd === "micia91") {
       setIsLoggedIn(true); setUserRole('cameriere');
       if (ricordami) { localStorage.setItem('belvedere_logged_in', 'true'); localStorage.setItem('belvedere_user_role', 'cameriere'); }
     } else { alert("Password errata!"); }
